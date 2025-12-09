@@ -29,7 +29,7 @@ koios-python = "^2.0.0"
 requests = "^2.32.4"
 cachetools = ">=5.5.2,<6.0.0"
 ogmios = "^1.4.2"
-pycardano =  "^0.15.0"
+pycardano =  "^0.18.0"
 yaci-client = "^1.0"
 
 

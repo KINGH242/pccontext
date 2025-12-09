@@ -1,3 +1,10 @@
+## 0.5.5 (2025-12-09)
+
+### Fix
+
+- update to latest pycardano
+- sort imports in assemble.py
+
 ## 0.5.4 (2025-08-14)
 
 ### Fix

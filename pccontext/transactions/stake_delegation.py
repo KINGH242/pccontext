@@ -4,6 +4,7 @@ from pycardano import (
     Address,
     ExtendedSigningKey,
     PoolKeyHash,
+    PoolOperator,
     SigningKey,
     StakeCredential,
     StakeDelegation,
@@ -27,15 +28,17 @@ def stake_delegation(
     Generates an unwitnessed stake delegation transaction.
     :param context: The chain context.
     :param stake_vkey: The stake address vkey file.
-    :param pool_id: The pool ID (hex) to delegate to.
+    :param pool_id: The pool ID (hex or bech32) to delegate to.
     :param send_from_addr: The address to send from.
     :param signing_keys: List of signing keys to be used for signing the transaction.
     :return: An unsigned transaction object.
     """
+    pool = PoolOperator.from_primitive(pool_id)
+
     stake_credential = StakeCredential(stake_vkey.hash())
     stake_delegation_certificate = StakeDelegation(
         stake_credential=stake_credential,
-        pool_keyhash=PoolKeyHash(bytes.fromhex(pool_id)),
+        pool_keyhash=pool.pool_key_hash,
     )
 
     stake_address = Address(staking_part=stake_vkey.hash(), network=context.network)

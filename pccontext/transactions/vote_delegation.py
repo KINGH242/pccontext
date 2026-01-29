@@ -30,7 +30,7 @@ def vote_delegation(
     :param stake_vkey: The stake address vkey file.
     :param send_from_addr: The address to send from.
     :param drep_kind: The DRep kind.
-    :param drep_id: The Delegate Representative ID (hex).
+    :param drep_id: The Delegate Representative ID (hex or bech32).
     :param signing_keys: List of signing keys to be used for signing the transaction.
     :return: An unsigned transaction object.
     """

@@ -10,6 +10,7 @@ from pycardano import (
     StakeVerificationKey,
     Transaction,
     TransactionBuilder,
+    PoolOperator,
 )
 
 from pccontext import ChainContext
@@ -34,10 +35,12 @@ def stake_address_registration_and_delegation(
     """
     protocol_parameters = context.protocol_param
 
+    pool = PoolOperator.from_primitive(pool_id)
+
     stake_credential = StakeCredential(stake_vkey.hash())
     registration_and_delegation_certificate = StakeRegistrationAndDelegation(
         stake_credential=stake_credential,
-        pool_keyhash=PoolKeyHash(bytes.fromhex(pool_id)),
+        pool_keyhash=pool.pool_key_hash,
         coin=protocol_parameters.key_deposit,
     )
 

@@ -11,6 +11,7 @@ from pycardano import (
     StakeVerificationKey,
     Transaction,
     TransactionBuilder,
+    PoolOperator,
 )
 
 from pccontext import ChainContext
@@ -31,20 +32,22 @@ def stake_and_vote_delegation(
     Generates an unwitnessed stake and vote delegation transaction.
     :param context: The chain context.
     :param stake_vkey: The stake address vkey file.
-    :param pool_id: The pool ID (hex) to delegate to.
+    :param pool_id: The pool ID (hex or bech32) to delegate to.
     :param send_from_addr: The address to send from.
     :param drep_kind: The DRep kind.
-    :param drep_id: The Delegate Representative ID (hex).
+    :param drep_id: The Delegate Representative ID (hex or bech32).
     :param signing_keys: List of signing keys to be used for signing the transaction.
     :return: An unsigned transaction object.
     """
+    pool = PoolOperator.from_primitive(pool_id)
+
     stake_credential = StakeCredential(stake_vkey.hash())
 
     drep = get_drep(drep_kind, drep_id)
 
     stake_and_vote_delegation_certificate = StakeAndVoteDelegation(
         stake_credential=stake_credential,
-        pool_keyhash=PoolKeyHash(bytes.fromhex(pool_id)),
+        pool_keyhash=pool.pool_key_hash,
         drep=drep,
     )
 

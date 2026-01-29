@@ -4,7 +4,7 @@ from pycardano import DRep, DRepKind, ScriptHash, VerificationKeyHash
 
 
 def get_drep(
-    drep_kind: DRepKind,
+    drep_kind: Optional[DRepKind] = None,
     drep_id: Optional[str] = None,
 ) -> DRep:
     """
@@ -13,6 +13,8 @@ def get_drep(
     :param drep_id: The Delegate Representative ID (hex).
     :return: A DRep object.
     """
+    if drep_id is not None and drep_id.startswith("drep"):
+        return DRep.decode(drep_id)
     if drep_kind in [DRepKind.ALWAYS_ABSTAIN, DRepKind.ALWAYS_NO_CONFIDENCE]:
         drep = DRep(drep_kind)
     elif drep_kind == DRepKind.SCRIPT_HASH and drep_id is not None:

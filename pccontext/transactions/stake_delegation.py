@@ -3,7 +3,6 @@ from typing import List, Optional, Union
 from pycardano import (
     Address,
     ExtendedSigningKey,
-    PoolKeyHash,
     PoolOperator,
     SigningKey,
     StakeCredential,

@@ -3,14 +3,13 @@ from typing import List, Optional, Union
 from pycardano import (
     Address,
     ExtendedSigningKey,
-    PoolKeyHash,
+    PoolOperator,
     SigningKey,
     StakeCredential,
     StakeRegistrationAndDelegation,
     StakeVerificationKey,
     Transaction,
     TransactionBuilder,
-    PoolOperator,
 )
 
 from pccontext import ChainContext

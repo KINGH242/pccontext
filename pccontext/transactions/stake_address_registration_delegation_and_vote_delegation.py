@@ -4,14 +4,13 @@ from pycardano import (
     Address,
     DRepKind,
     ExtendedSigningKey,
-    PoolKeyHash,
+    PoolOperator,
     SigningKey,
     StakeCredential,
     StakeRegistrationAndDelegationAndVoteDelegation,
     StakeVerificationKey,
     Transaction,
     TransactionBuilder,
-    PoolOperator,
 )
 
 from pccontext import ChainContext

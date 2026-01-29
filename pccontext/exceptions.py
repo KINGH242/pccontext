@@ -2,6 +2,20 @@
 Exception classes
 """
 
+__all__ = [
+    "CardanoCLIError",
+    "CardanoNodeError",
+    "BlockfrostError",
+    "OgmiosError",
+    "CardanoModelError",
+    "OfflineTransferFileError",
+    "NodeNotSyncedError",
+    "NodeNotOnlineError",
+    "BinaryExecutableError",
+    "TransactionError",
+    "UnsupportedNetworkError",
+]
+
 
 class CardanoCLIError(Exception):
     """
@@ -122,4 +136,16 @@ class TransactionError(Exception):
 
     def __init__(self, message="Transaction did not build successfully"):
         self.message = message
+        super().__init__(self.message)
+
+
+class UnsupportedNetworkError(Exception):
+    """
+    Exception raised when a network is not supported
+
+    :param message: explanation of the error
+    """
+
+    def __init__(self, network: str):
+        self.message = f"Unsupported network: {network}"
         super().__init__(self.message)

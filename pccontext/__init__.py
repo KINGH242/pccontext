@@ -4,5 +4,6 @@ __app_name__ = "pccontext"
 
 from .backend import *
 from .enums import *
+from .exceptions import *
 from .models import *
 from .utils import *

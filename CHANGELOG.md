@@ -1,3 +1,15 @@
+## 0.6.0 (2026-01-29)
+
+### Feat
+
+- support hex and bech32 formats for pool_id and drep_id in stake delegation functions
+- add blockchain explorer implementations and example usage
+
+### Fix
+
+- add exception handling for unsupported networks
+- handle hex or bech32 in get_drep function
+
 ## 0.5.6 (2026-01-20)
 
 ### Fix

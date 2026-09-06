@@ -1,3 +1,9 @@
+## 0.7.4 (2026-09-06)
+
+### Fix
+
+- install docs dependencies into the Read the Docs build environment
+
 ## 0.7.3 (2026-09-06)
 
 ### Fix

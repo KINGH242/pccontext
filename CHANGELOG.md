@@ -1,3 +1,9 @@
+## 0.7.1 (2026-09-06)
+
+### Fix
+
+- resolve Dependabot security advisories in dependencies
+
 ## 0.7.0 (2026-09-06)
 
 ### Feat

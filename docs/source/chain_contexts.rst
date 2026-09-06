@@ -273,11 +273,87 @@ fee-sensitive.
 
 This context has no PyCardano equivalent.
 
+Extended queries
+----------------
+
+Beyond PyCardano's interface, every context here also answers stake, pool and
+governance queries. Each has a default implementation on
+:class:`~pccontext.backend.base.ChainContext` that raises
+:class:`NotImplementedError` naming the context, so a backend implements only
+what the service behind it can answer:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Query
+     - Returns
+   * - ``era``
+     - The era the chain is in, as an :class:`~pccontext.enums.Era`.
+   * - ``chain_tip``
+     - :class:`~pccontext.models.chain_tip_model.ChainTip` — slot, block hash
+       and height of the latest block.
+   * - ``utxo(tx_input)``
+     - A single UTxO and whether it has been spent, or ``None``.
+   * - ``stake_address_info(addr)``
+     - Registration, rewards, pool and DRep delegation for a stake address.
+   * - ``stake_pools()``
+     - Every registered pool.
+   * - ``stake_pool_info(pool_id, strict)``
+     - :class:`~pccontext.models.stake_pool_info_model.StakePoolInfo` — the
+       pool's registered parameters and stake figures.
+   * - ``kes_period_info(pool, op_cert)``
+     - :class:`~pccontext.models.kes_period_info_model.KESPeriodInfo` — the
+       counters needed to decide whether to rotate an operational certificate.
+   * - ``treasury()``
+     - The treasury balance in lovelace.
+   * - ``drep_info(drep)``
+     - A DRep's registration and voting power.
+   * - ``gov_action_info(id)``
+     - A governance action's lifecycle information.
+   * - ``gov_action_votes(id)``
+     - The action plus every vote against it, split by voter class.
+   * - ``gov_actions_all()``
+     - The same, for every active proposal.
+   * - ``committee_member_info(cold=, hot=)``
+     - A committee member's authorization and term.
+   * - ``committee_state()``
+     - Every member plus the active quorum threshold.
+   * - ``drep_stake_distribution()``
+     - Stake behind each DRep this epoch.
+   * - ``spo_stake_distribution()``
+     - Stake behind each pool this epoch.
+
+Because unsupported queries raise rather than return ``None``, code that must
+work across backends should either catch :class:`NotImplementedError` or pick a
+backend it knows can answer:
+
+.. code-block:: python
+
+   try:
+       state = context.committee_state()
+   except NotImplementedError:
+       state = None  # this backend cannot answer; fall back
+
+Identifying a context
+---------------------
+
+Two properties describe a context itself rather than the chain:
+
+.. code-block:: python
+
+   context.name           # "Koios", "CardanoCli", ...
+   context.context_type   # ContextType.ONLINE or ContextType.OFFLINE
+
+``context_type`` is what distinguishes a context that reaches the network from
+one answering out of a captured file, which matters when the freshness of an
+answer affects whether a transaction will be accepted.
+
 What every context supports
 ---------------------------
 
-All seven implement the full interface. The differences below are the ones worth
-knowing:
+All seven implement the full PyCardano interface. The differences below are the
+ones worth knowing:
 
 .. list-table::
    :header-rows: 1

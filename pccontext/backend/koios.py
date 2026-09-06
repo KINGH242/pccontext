@@ -93,6 +93,10 @@ class KoiosChainContext(ChainContext):
         self._genesis_param = None
         self._protocol_param = None
 
+    @property
+    def name(self) -> str:
+        return "Koios"
+
     def _query_chain_tip(self) -> JsonDict:
         return self.api.get_tip()[0]
 

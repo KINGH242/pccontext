@@ -60,8 +60,8 @@ At a glance
    in PyCardano it is an alias for the v6 context, and in ``pccontext`` it is the
    only Ogmios context there is.
 
-The interface is one method wider
----------------------------------
+The interface is much wider
+---------------------------
 
 :class:`pccontext.backend.base.ChainContext` subclasses
 :class:`pycardano.backend.base.ChainContext` and adds a single method:
@@ -90,6 +90,21 @@ address:
 This is what the staking and governance helpers in :doc:`transactions` use to
 refuse invalid transactions before they are built — registering an
 already-registered address, delegating from an unregistered one, and so on.
+
+Alongside it are fifteen further queries with no PyCardano equivalent, covering
+chain state (``era``, ``chain_tip``, ``utxo``), stake pools (``stake_pools``,
+``stake_pool_info``, ``kes_period_info``), the ``treasury``, Conway governance
+(``drep_info``, ``gov_action_info``, ``gov_action_votes``, ``gov_actions_all``,
+``committee_member_info``, ``committee_state``) and the per-epoch stake
+distributions (``drep_stake_distribution``, ``spo_stake_distribution``). Each
+has a default that raises :class:`NotImplementedError` naming the context, so a
+backend implements only what it can answer. See
+:ref:`chain_contexts:Extended queries` for the full list and the models they
+return.
+
+Contexts also identify themselves through ``name`` and ``context_type``, the
+latter distinguishing a context that reaches the network from one answering out
+of a captured file.
 
 Everything else on the interface — ``utxos``, ``submit_tx``, ``submit_tx_cbor``,
 ``evaluate_tx``, ``evaluate_tx_cbor``, ``epoch``, ``last_block_slot``,

@@ -122,6 +122,10 @@ class BlockFrostChainContext(ChainContext):
         self._genesis_param = None
         self._protocol_param = None
 
+    @property
+    def name(self) -> str:
+        return "Blockfrost"
+
     def _check_epoch_and_update(self):
         if int(time.time()) < self._epoch_info.end_time:
             return False

@@ -6,6 +6,12 @@ from pycardano.address import Address
 from pycardano.backend.base import GenesisParameters
 from pycardano.backend.base import ProtocolParameters as PyCardanoProtocolParameters
 from pycardano.backend.blockfrost import _try_fix_script
+from pycardano.certificate import DRep
+from pycardano.governance import (
+    CommitteeColdCredential,
+    CommitteeHotCredential,
+    GovActionId,
+)
 from pycardano.hash import DatumHash, ScriptHash
 from pycardano.network import Network
 from pycardano.plutus import (
@@ -14,6 +20,7 @@ from pycardano.plutus import (
     PlutusV2Script,
     PlutusV3Script,
 )
+from pycardano.pool_params import PoolOperator
 from pycardano.serialization import RawCBOR
 from pycardano.transaction import (
     Asset,
@@ -26,7 +33,20 @@ from pycardano.transaction import (
 )
 
 from pccontext.backend import ChainContext
-from pccontext.models import StakeAddressInfo
+from pccontext.enums import Era
+from pccontext.models import (
+    ChainTip,
+    CommitteeMemberInfo,
+    CommitteeStateInfo,
+    DRepInfo,
+    DRepStakeEntry,
+    GovActionInfo,
+    GovActionVotes,
+    KESPeriodInfo,
+    SPOStakeEntry,
+    StakeAddressInfo,
+    StakePoolInfo,
+)
 
 __all__ = ["KupoChainContextExtension"]
 
@@ -69,6 +89,10 @@ class KupoChainContextExtension(ChainContext):
             ttl=self._refetch_chain_tip_interval, maxsize=utxo_cache_size
         )
         self._datum_cache = LRUCache(maxsize=datum_cache_size)
+
+    @property
+    def name(self) -> str:
+        return "Kupo"
 
     @property
     def genesis_param(self) -> GenesisParameters:
@@ -266,3 +290,77 @@ class KupoChainContextExtension(ChainContext):
             List[StakeAddressInfo]: The stake address information.
         """
         return self._wrapped_backend.stake_address_info(stake_address)
+
+    # Kupo indexes UTxOs and datums only. Everything below is chain, pool and
+    # governance state it never sees, so it delegates to the wrapped backend
+    # and inherits that backend's support — including its NotImplementedError.
+
+    @property
+    def era(self) -> Optional[Era]:
+        """Get the current era"""
+        return self._wrapped_backend.era
+
+    @property
+    def chain_tip(self) -> ChainTip:
+        """Get the current chain tip"""
+        return self._wrapped_backend.chain_tip
+
+    def utxo(self, tx_input: TransactionInput) -> Optional[Tuple[UTxO, bool]]:
+        """Resolve a single UTxO by transaction input"""
+        return self._wrapped_backend.utxo(tx_input)
+
+    def stake_pools(self) -> List[PoolOperator]:
+        """Get all registered stake pools"""
+        return self._wrapped_backend.stake_pools()
+
+    def stake_pool_info(self, pool_id: str, strict: bool = False) -> StakePoolInfo:
+        """Get a stake pool's information"""
+        return self._wrapped_backend.stake_pool_info(pool_id, strict)
+
+    def kes_period_info(
+        self,
+        pool: Optional[PoolOperator] = None,
+        op_cert: Optional[Union[bytes, str]] = None,
+    ) -> KESPeriodInfo:
+        """Get KES period information for an operational certificate"""
+        return self._wrapped_backend.kes_period_info(pool, op_cert)
+
+    def treasury(self) -> int:
+        """Get the treasury balance"""
+        return self._wrapped_backend.treasury()
+
+    def drep_info(self, drep: DRep) -> DRepInfo:
+        """Get a DRep's information"""
+        return self._wrapped_backend.drep_info(drep)
+
+    def gov_action_info(self, gov_action_id: GovActionId) -> GovActionInfo:
+        """Get a governance action's information"""
+        return self._wrapped_backend.gov_action_info(gov_action_id)
+
+    def gov_action_votes(self, gov_action_id: GovActionId) -> GovActionVotes:
+        """Get the votes recorded against a governance action"""
+        return self._wrapped_backend.gov_action_votes(gov_action_id)
+
+    def gov_actions_all(self) -> List[GovActionVotes]:
+        """Get all active governance proposals with their votes"""
+        return self._wrapped_backend.gov_actions_all()
+
+    def committee_member_info(
+        self,
+        cold: Optional[CommitteeColdCredential] = None,
+        hot: Optional[CommitteeHotCredential] = None,
+    ) -> CommitteeMemberInfo:
+        """Get a committee member's information"""
+        return self._wrapped_backend.committee_member_info(cold, hot)
+
+    def committee_state(self) -> CommitteeStateInfo:
+        """Get the constitutional committee state"""
+        return self._wrapped_backend.committee_state()
+
+    def drep_stake_distribution(self) -> List[DRepStakeEntry]:
+        """Get the DRep stake distribution"""
+        return self._wrapped_backend.drep_stake_distribution()
+
+    def spo_stake_distribution(self) -> List[SPOStakeEntry]:
+        """Get the stake pool stake distribution"""
+        return self._wrapped_backend.spo_stake_distribution()

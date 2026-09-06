@@ -86,6 +86,10 @@ class OgmiosChainContext(ChainContext):
         )
         self._datum_cache = LRUCache(maxsize=datum_cache_size)
 
+    @property
+    def name(self) -> str:
+        return "Ogmios"
+
     def _query_current_era(self) -> OgmiosEra:
         with OgmiosClient(self.host, self.port, self.secure) as client:
             return get_current_era(client)

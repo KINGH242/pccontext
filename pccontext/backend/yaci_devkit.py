@@ -86,6 +86,10 @@ class YaciDevkitChainContext(ChainContext):
         self._protocol_param = None
 
     @property
+    def name(self) -> str:
+        return "YaciDevkit"
+
+    @property
     def network(self) -> Network:
         return Network.TESTNET
 

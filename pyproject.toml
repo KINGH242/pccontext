@@ -38,6 +38,13 @@ repository = "https://github.com/KINGH242/pccontext.git"
 documentation = "https://pccontext.readthedocs.io/en/latest/"
 
 
+# Temporary: points koios-python at the fork branch that adds the Governance
+# endpoints, so they can be exercised here before the upstream PR is opened.
+# Must be removed before any release — a git dependency cannot be published.
+[tool.poetry.dependencies]
+koios-python = { git = "https://github.com/KINGH242/koios-python.git", branch = "feat/governance-api" }
+
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.3"
 black = "^26.3.1"

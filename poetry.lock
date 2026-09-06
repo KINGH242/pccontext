@@ -1293,10 +1293,14 @@ description = "Python wrapper Library using Koios API for accessing information 
 optional = false
 python-versions = "*"
 groups = ["main"]
-files = [
-    {file = "koios-python-2.0.0.tar.gz", hash = "sha256:9ed1e77fb6cf573b80d24bba552b57fe765526492acdb10033e9a34036df56cd"},
-    {file = "koios_python-2.0.0-py3-none-any.whl", hash = "sha256:702e068c4360a3a59c3b9dd84817d19ab301cb704dc8f62f0d95c18d0f6ce7db"},
-]
+files = []
+develop = false
+
+[package.source]
+type = "git"
+url = "https://github.com/KINGH242/koios-python.git"
+reference = "feat/governance-api"
+resolved_reference = "7ee475a977004df6fcf9de6f2d9ba519f3cc3863"
 
 [[package]]
 name = "librt"
@@ -2744,4 +2748,4 @@ python-dateutil = ">=2.8.0,<3.0.0"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4.0"
-content-hash = "3ae4e5a0cdd90a6d68b174399cd1b5e3cddd2db39b913eb76a936870943b484f"
+content-hash = "c4be83d87765c9c76b2ef67e296528fb2908aa3cc9bf97f17ebd1d37b9d0d20b"

@@ -1,3 +1,13 @@
+## 0.7.0 (2026-09-06)
+
+### Feat
+
+- evaluate plutus script costs in CardanoCliChainContext
+
+### Fix
+
+- key cost models by position for pycardano
+
 ## 0.6.0 (2026-01-29)
 
 ### Feat

@@ -5,7 +5,7 @@ description = "Chain Contexts for PyCardano library"
 readme = "README.md"
 license = "MIT"
 authors = [
-    { name = "Hareem Adderley", email = "haddderley@kingpinapps.com" },
+    { name = "Hareem Adderley", email = "hadderley@kingpinapps.com" },
 ]
 keywords = ["python", "cardano", "blockchain", "crypto"]
 requires-python = ">=3.10,<4.0"

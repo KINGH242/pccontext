@@ -397,7 +397,7 @@ Which backend answers what
      - \-
    * - ``drep_info``
      - yes
-     - \-
+     - yes
      - yes
      - \-
      - via wrapped
@@ -405,7 +405,7 @@ Which backend answers what
      - \-
    * - ``gov_action_info``
      - yes
-     - \-
+     - yes
      - yes
      - \-
      - via wrapped
@@ -413,7 +413,7 @@ Which backend answers what
      - \-
    * - ``gov_action_votes``
      - yes
-     - \-
+     - yes
      - yes
      - \-
      - via wrapped
@@ -421,7 +421,7 @@ Which backend answers what
      - \-
    * - ``gov_actions_all``
      - yes
-     - \-
+     - yes
      - yes
      - \-
      - via wrapped
@@ -429,23 +429,23 @@ Which backend answers what
      - \-
    * - ``committee_member_info``
      - yes
-     - \-
-     - \-
+     - yes
+     - yes
      - yes
      - via wrapped
      - \-
      - \-
    * - ``committee_state``
      - yes
-     - \-
-     - \-
+     - yes
+     - yes
      - yes
      - via wrapped
      - \-
      - \-
    * - ``drep_stake_distribution``
      - yes
-     - \-
+     - yes
      - yes
      - \-
      - via wrapped
@@ -453,7 +453,7 @@ Which backend answers what
      - \-
    * - ``spo_stake_distribution``
      - yes
-     - \-
+     - yes
      - yes
      - yes
      - via wrapped
@@ -461,21 +461,21 @@ Which backend answers what
      - \-
 
 ``cardano-cli`` answers all fifteen because it talks straight to a node socket.
+Koios and Blockfrost answer all fifteen too, though both needed work on their
+client libraries to get there — the services themselves have supported Conway
+governance throughout.
 
-Blockfrost covers most of Conway governance since ``blockfrost-python`` 0.7.0,
-which added the DRep and proposal endpoints. One gap remains: 0.7.0 wraps no
-committee endpoint even though the Blockfrost API has
-``/governance/committee``.
+Ogmios is the one that stops short. The installed ``ogmios`` client has no
+binding for ``governanceProposals``, ``delegateRepresentatives`` or
+``operationalCertificates``, and 1.4.3 is its latest release, so unlike the
+other two there is nothing to upgrade to.
 
-Koios and Ogmios stop earlier, and in both cases the limit is the client
-library rather than the service. ``koios-python`` 2.0.0 wraps none of Koios'
-governance endpoints — ``/drep_info``, ``/committee_info``, ``/proposal_list``
-and ``/proposal_votes`` all exist and answer — and the installed ``ogmios``
-client has no binding for ``governanceProposals``,
-``delegateRepresentatives`` or ``operationalCertificates``.
+Yaci DevKit implements none of them yet, and the offline transfer file answers
+only ``era``: the file it reads holds protocol parameters, genesis and UTxOs,
+and has nowhere to keep pool or governance state.
 
 Kupo delegates everything to the context it wraps, so its row is whatever that
-backend supports.
+backend supports — including that backend's :class:`NotImplementedError`.
 
 Because unsupported queries raise rather than return ``None``, code that must
 work across backends should either catch :class:`NotImplementedError` or pick a

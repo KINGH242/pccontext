@@ -3,21 +3,25 @@ import tempfile
 import time
 from decimal import Decimal
 from fractions import Fraction
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import cbor2
 from blockfrost import ApiError, ApiUrls, BlockFrostApi
 from blockfrost.utils import Namespace
 from pycardano.address import Address
 from pycardano.backend.base import ProtocolParameters as PyCardanoProtocolParameters
+from pycardano.certificate import Anchor, DRep
 from pycardano.exception import TransactionFailedException
+from pycardano.governance import GovActionId, Vote
 from pycardano.hash import (
     SCRIPT_HASH_SIZE,
+    AnchorDataHash,
     DatumHash,
     PoolKeyHash,
     PoolMetadataHash,
     RewardAccountHash,
     ScriptHash,
+    TransactionId,
     VerificationKeyHash,
     VrfKeyHash,
 )
@@ -52,16 +56,23 @@ from pycardano.transaction import (
 from pycardano.types import JsonDict
 
 from pccontext.backend import ChainContext
-from pccontext.enums import Network, PoolStatus
+from pccontext.enums import DRepStatus, Network, PoolStatus
 from pccontext.exceptions import BlockfrostError, PoolMetadataError
 from pccontext.models import (
     ChainTip,
+    CommitteeVote,
+    DRepInfo,
+    DRepStakeEntry,
+    DRepVote,
     GenesisParameters,
+    GovActionInfo,
+    GovActionVotes,
     KESPeriodInfo,
     ProtocolParameters,
     SPOStakeEntry,
     StakeAddressInfo,
     StakePoolInfo,
+    StakePoolVote,
 )
 
 __all__ = ["BlockFrostChainContext"]
@@ -823,6 +834,294 @@ class BlockFrostChainContext(ChainContext):
             ) from e
 
         return int(network_info.supply.treasury)
+
+    # -- Governance --------------------------------------------------------
+
+    @staticmethod
+    def _drep_id(drep: DRep) -> str:
+        """Bech32 id Blockfrost identifies a DRep by."""
+        return drep.encode()
+
+    @staticmethod
+    def _decode_drep(drep_id: Optional[str]) -> Optional[DRep]:
+        """Decode a bech32 DRep id, tolerating ids this pycardano cannot parse.
+
+        The distribution is a list; one unparseable id should leave the entry's
+        stake visible rather than fail the whole query.
+        """
+        if not drep_id:
+            return None
+        try:
+            return DRep.decode(drep_id)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _drep_status(drep: Any) -> DRepStatus:
+        """Derive a registration status from Blockfrost's DRep flags.
+
+        Blockfrost reports ``retired`` and ``active`` as separate booleans
+        rather than a status string. ``retired`` is checked first: a retired
+        DRep is not active, and retirement is the more specific fact.
+        """
+        if getattr(drep, "retired", False):
+            return DRepStatus.RETIRED
+        if getattr(drep, "active", False):
+            return DRepStatus.REGISTERED
+        return DRepStatus.NOT_REGISTERED
+
+    def _drep_anchor(self, drep_id: str) -> Optional[Anchor]:
+        """Fetch a DRep's metadata anchor, if one is registered.
+
+        A DRep without metadata is normal, so a 404 yields ``None`` rather than
+        an error.
+        """
+        try:
+            metadata = self.api.governance_drep_metadata(drep_id)
+        except ApiError as e:
+            if e.status_code == 404:
+                return None
+            raise BlockfrostError(
+                f"Failed to fetch metadata for DRep {drep_id}. {e}"
+            ) from e
+
+        url = getattr(metadata, "url", None)
+        data_hash = getattr(metadata, "hash", None)
+        if not url or not data_hash:
+            return None
+        return Anchor(url=url, data_hash=AnchorDataHash(bytes.fromhex(data_hash)))
+
+    def drep_info(self, drep: DRep) -> DRepInfo:
+        """Get a delegate representative's registration and voting power.
+
+        Args:
+            drep (DRep): The DRep to look up.
+
+        Returns:
+            DRepInfo: The DRep's information. A DRep Blockfrost does not know is
+            reported as ``NOT_REGISTERED`` with zero stake rather than raising,
+            which is how an unregistered DRep is indistinguishable from an
+            unknown one at the API level.
+
+        Raises:
+            :class:`BlockfrostError`: When the DRep cannot be fetched.
+        """
+        drep_id = self._drep_id(drep)
+
+        try:
+            result = self.api.governance_drep(drep_id)
+        except ApiError as e:
+            if e.status_code == 404:
+                return DRepInfo(
+                    drep=drep, active=False, stake=0, status=DRepStatus.NOT_REGISTERED
+                )
+            raise BlockfrostError(f"Failed to fetch DRep {drep_id}. {e}") from e
+
+        # Blockfrost reports neither the deposit nor an expiry epoch for a DRep,
+        # so both stay unset rather than being guessed from last_active_epoch.
+        return DRepInfo(
+            drep=drep,
+            active=bool(getattr(result, "active", False)),
+            anchor=self._drep_anchor(drep_id),
+            deposit=None,
+            stake=int(getattr(result, "amount", 0) or 0),
+            expiry=None,
+            status=self._drep_status(result),
+        )
+
+    def drep_stake_distribution(self) -> List[DRepStakeEntry]:
+        """Get the stake delegated to each DRep this epoch.
+
+        Returns:
+            List[DRepStakeEntry]: One entry per DRep Blockfrost lists.
+
+        Raises:
+            :class:`BlockfrostError`: When the DRep list cannot be fetched.
+        """
+        try:
+            dreps = self.api.governance_dreps(gather_pages=True)
+        except ApiError as e:
+            raise BlockfrostError(
+                f"Failed to fetch the DRep stake distribution. {e}"
+            ) from e
+
+        return [
+            DRepStakeEntry(
+                drep=self._decode_drep(drep.drep_id),
+                stake=int(getattr(drep, "amount", 0) or 0),
+            )
+            for drep in dreps
+        ]
+
+    # -- Governance actions -----------------------------------------------
+
+    @staticmethod
+    def _gov_action_id(proposal: Any) -> Optional[GovActionId]:
+        """Build a GovActionId from the transaction hash and certificate index
+        Blockfrost returns alongside every proposal."""
+        tx_hash = getattr(proposal, "tx_hash", None)
+        cert_index = getattr(proposal, "cert_index", None)
+        if not tx_hash or cert_index is None:
+            return None
+        return GovActionId(
+            transaction_id=TransactionId(bytes.fromhex(tx_hash)),
+            gov_action_index=int(cert_index),
+        )
+
+    @staticmethod
+    def _as_epoch(value: Any) -> Optional[int]:
+        return None if value is None else int(value)
+
+    def _proposal_detail(self, gov_action_id: str) -> Any:
+        try:
+            return self.api.governance_proposal_by_gov_action_id(gov_action_id)
+        except ApiError as e:
+            raise BlockfrostError(
+                f"Failed to fetch governance proposal {gov_action_id}. {e}"
+            ) from e
+
+    def gov_action_info(self, gov_action_id: GovActionId) -> GovActionInfo:
+        """Get the lifecycle information for a governance action.
+
+        Args:
+            gov_action_id (GovActionId): The action's identifier.
+
+        Returns:
+            GovActionInfo: The action's information. ``gov_action`` carries
+            Blockfrost's own description object rather than a parsed pycardano
+            action: Blockfrost returns the proposal as free-form JSON keyed by
+            governance type, which does not map onto pycardano's action classes
+            without guessing. ``proposed_in`` is unset because Blockfrost does
+            not report the epoch a proposal was submitted in.
+
+        Raises:
+            :class:`BlockfrostError`: When the proposal cannot be fetched.
+        """
+        detail = self._proposal_detail(gov_action_id.encode())
+        return GovActionInfo(
+            gov_action_id=gov_action_id,
+            gov_action=getattr(detail, "governance_description", None),
+            proposed_in=None,
+            expires_after=self._as_epoch(getattr(detail, "expiration", None)),
+            ratified_epoch=self._as_epoch(getattr(detail, "ratified_epoch", None)),
+            enacted_epoch=self._as_epoch(getattr(detail, "enacted_epoch", None)),
+            dropped_epoch=self._as_epoch(getattr(detail, "dropped_epoch", None)),
+            expired_epoch=self._as_epoch(getattr(detail, "expired_epoch", None)),
+        )
+
+    def _split_votes(
+        self, raw_votes: List[Any]
+    ) -> Tuple[List[CommitteeVote], List[DRepVote], List[StakePoolVote]]:
+        """Split Blockfrost's flat vote list by voter role.
+
+        Blockfrost returns one list with a ``voter_role`` discriminator, where
+        the models keep the three classes apart.
+        """
+        committee: List[CommitteeVote] = []
+        dreps: List[DRepVote] = []
+        pools: List[StakePoolVote] = []
+
+        for raw in raw_votes:
+            role = str(getattr(raw, "voter_role", "")).lower()
+            voter = getattr(raw, "voter", None)
+            try:
+                vote = Vote[str(getattr(raw, "vote", "")).upper()]
+            except KeyError:
+                vote = None
+
+            if role in ("constitutional_committee", "committee"):
+                committee.append(CommitteeVote(vote=vote))
+            elif role == "drep":
+                dreps.append(DRepVote(voter=self._decode_drep(voter), vote=vote))
+            elif role in ("spo", "stake_pool_operator"):
+                pools.append(StakePoolVote(voter=voter, vote=vote))
+
+        return committee, dreps, pools
+
+    def _gov_action_votes(self, proposal: Any) -> GovActionVotes:
+        """Assemble a GovActionVotes from a proposal detail plus its votes."""
+        gov_action_id = self._gov_action_id(proposal)
+        encoded = gov_action_id.encode() if gov_action_id else None
+
+        raw_votes: List[Any] = []
+        if encoded:
+            try:
+                raw_votes = self.api.governance_proposal_votes_by_gov_action_id(
+                    encoded, gather_pages=True
+                )
+            except ApiError as e:
+                raise BlockfrostError(
+                    f"Failed to fetch votes for governance action {encoded}. {e}"
+                ) from e
+
+        committee, dreps, pools = self._split_votes(raw_votes)
+        deposit = getattr(proposal, "deposit", None)
+
+        return GovActionVotes(
+            gov_action_id=gov_action_id,
+            gov_action=getattr(proposal, "governance_description", None),
+            committee_votes=committee,
+            drep_votes=dreps,
+            stake_pool_votes=pools,
+            deposit=None if deposit is None else int(deposit),
+            deposit_return_addr=getattr(proposal, "return_address", None),
+            proposed_in=None,
+            expires_after=self._as_epoch(getattr(proposal, "expiration", None)),
+            ratified_epoch=self._as_epoch(getattr(proposal, "ratified_epoch", None)),
+            enacted_epoch=self._as_epoch(getattr(proposal, "enacted_epoch", None)),
+            dropped_epoch=self._as_epoch(getattr(proposal, "dropped_epoch", None)),
+            expired_epoch=self._as_epoch(getattr(proposal, "expired_epoch", None)),
+        )
+
+    def gov_action_votes(self, gov_action_id: GovActionId) -> GovActionVotes:
+        """Get the votes recorded against a governance action, by voter class.
+
+        Args:
+            gov_action_id (GovActionId): The action's identifier.
+
+        Returns:
+            GovActionVotes: The proposal plus its committee, DRep and stake pool
+            votes. Empty vote lists mean no votes have been recorded, not that
+            Blockfrost cannot report them.
+
+        Raises:
+            :class:`BlockfrostError`: When the proposal or its votes cannot be
+                fetched.
+        """
+        return self._gov_action_votes(self._proposal_detail(gov_action_id.encode()))
+
+    def gov_actions_all(self) -> List[GovActionVotes]:
+        """Get every governance proposal with its votes.
+
+        Note:
+            Blockfrost's proposal list carries only identifiers, so this makes
+            two further requests per proposal — one for the detail and one for
+            the votes. A `cardano-cli` context answers the same question from a
+            single ``query gov-state``, and is the better choice when the whole
+            set is needed regularly.
+
+        Returns:
+            List[GovActionVotes]: One entry per proposal.
+
+        Raises:
+            :class:`BlockfrostError`: When the proposal list cannot be fetched.
+        """
+        try:
+            proposals = self.api.governance_proposals(gather_pages=True)
+        except ApiError as e:
+            raise BlockfrostError(
+                f"Failed to fetch the governance proposal list. {e}"
+            ) from e
+
+        results = []
+        for proposal in proposals:
+            gov_action_id = self._gov_action_id(proposal)
+            if gov_action_id is None:
+                continue
+            results.append(
+                self._gov_action_votes(self._proposal_detail(gov_action_id.encode()))
+            )
+        return results
 
     def spo_stake_distribution(self) -> List[SPOStakeEntry]:
         """Get the stake delegated to each stake pool this epoch.

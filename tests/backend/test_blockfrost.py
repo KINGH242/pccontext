@@ -12,12 +12,14 @@ from pycardano import (
     PoolOperator,
     SingleHostAddr,
     SingleHostName,
+    TransactionId,
     TransactionInput,
+    Vote,
 )
 from pycardano.network import Network as PyCardanoNetwork
 
 from pccontext.backend.blockfrost import BlockFrostChainContext
-from pccontext.enums import Network, PoolStatus
+from pccontext.enums import DRepStatus, GovActionStatus, Network, PoolStatus
 from pccontext.exceptions import BlockfrostError, PoolMetadataError
 
 POOL_ID = "pool1escyjl60l930fswu54xvamlrn7r0r4chje5qp8uwku09j7x68x6"
@@ -532,29 +534,247 @@ def test_spo_stake_distribution_wraps_api_errors(context):
         context.spo_stake_distribution()
 
 
+# -- Governance (blockfrost-python 0.7.0) ---------------------------------
+
+
+# A valid bech32 DRep id, produced by pycardano so it round-trips.
+DREP_ID = "drep1ygqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq7vlc9n"
+
+
+def _drep():
+    """A real DRep whose bech32 id round-trips through pycardano."""
+    from pycardano import DRep
+
+    return DRep.decode(DREP_ID)
+
+
+class TestDRepInfo:
+    def test_maps_registration_and_stake(self, context):
+        context.api.governance_drep.return_value = _ns(
+            {
+                "drep_id": DREP_ID,
+                "amount": "123456789",
+                "active": True,
+                "active_epoch": 500,
+                "retired": False,
+                "expired": False,
+            }
+        )
+        context.api.governance_drep_metadata.return_value = _ns(
+            {"url": "https://example.com/drep.json", "hash": "ab" * 32}
+        )
+
+        info = context.drep_info(_drep())
+
+        assert info.active is True
+        assert info.stake == 123456789
+        assert info.status == DRepStatus.REGISTERED
+        assert info.anchor is not None
+        assert info.anchor.url == "https://example.com/drep.json"
+        # Blockfrost reports neither, so neither is guessed.
+        assert info.deposit is None
+        assert info.expiry is None
+
+    def test_retired_takes_precedence_over_active(self, context):
+        """A retired DRep is not active; retirement is the more specific fact."""
+        context.api.governance_drep.return_value = _ns(
+            {"drep_id": DREP_ID, "amount": "0", "active": False, "retired": True}
+        )
+        context.api.governance_drep_metadata.side_effect = _api_error(404)
+
+        assert context.drep_info(_drep()).status == DRepStatus.RETIRED
+
+    def test_unknown_drep_is_not_registered(self, context):
+        context.api.governance_drep.side_effect = _api_error(404)
+        info = context.drep_info(_drep())
+        assert info.status == DRepStatus.NOT_REGISTERED
+        assert info.stake == 0
+
+    def test_missing_metadata_is_not_an_error(self, context):
+        context.api.governance_drep.return_value = _ns(
+            {"drep_id": DREP_ID, "amount": "1", "active": True, "retired": False}
+        )
+        context.api.governance_drep_metadata.side_effect = _api_error(404)
+        assert context.drep_info(_drep()).anchor is None
+
+    def test_api_failure_is_wrapped(self, context):
+        context.api.governance_drep.side_effect = _api_error(500)
+        with pytest.raises(BlockfrostError):
+            context.drep_info(_drep())
+
+
+class TestDRepStakeDistribution:
+    def test_maps_every_drep(self, context):
+        context.api.governance_dreps.return_value = [
+            _ns({"drep_id": DREP_ID, "amount": "500"}),
+            _ns({"drep_id": DREP_ID, "amount": "1500"}),
+        ]
+        entries = context.drep_stake_distribution()
+        assert [e.stake for e in entries] == [500, 1500]
+        assert entries[0].drep is not None
+
+    def test_unparseable_id_keeps_the_row(self, context):
+        """One bad id should not lose the whole distribution."""
+        context.api.governance_dreps.return_value = [
+            _ns({"drep_id": "not-a-drep", "amount": "42"})
+        ]
+        entries = context.drep_stake_distribution()
+        assert len(entries) == 1
+        assert entries[0].drep is None
+        assert entries[0].stake == 42
+
+    def test_api_failure_is_wrapped(self, context):
+        context.api.governance_dreps.side_effect = _api_error(500)
+        with pytest.raises(BlockfrostError):
+            context.drep_stake_distribution()
+
+
+def _proposal(**overrides):
+    base = {
+        "id": "gov_action1abc",
+        "tx_hash": TX_HASH,
+        "cert_index": 0,
+        "governance_type": "info_action",
+        "governance_description": {"tag": "InfoAction"},
+        "deposit": "100000000000",
+        "return_address": "stake_test1abc",
+        "ratified_epoch": None,
+        "enacted_epoch": None,
+        "dropped_epoch": None,
+        "expired_epoch": None,
+        "expiration": 520,
+    }
+    base.update(overrides)
+    return _ns(base)
+
+
+class TestGovActionInfo:
+    def test_maps_lifecycle_epochs(self, context):
+        context.api.governance_proposal_by_gov_action_id.return_value = _proposal(
+            ratified_epoch=510, enacted_epoch=512
+        )
+        gov_id = GovActionId(
+            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
+        )
+
+        info = context.gov_action_info(gov_id)
+
+        assert info.expires_after == 520
+        assert info.ratified_epoch == 510
+        assert info.enacted_epoch == 512
+        assert info.status == GovActionStatus.ENACTED
+        # Blockfrost does not report the proposing epoch.
+        assert info.proposed_in is None
+
+    def test_open_action_has_no_status(self, context):
+        context.api.governance_proposal_by_gov_action_id.return_value = _proposal()
+        gov_id = GovActionId(
+            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
+        )
+        assert context.gov_action_info(gov_id).status is None
+
+    def test_api_failure_is_wrapped(self, context):
+        context.api.governance_proposal_by_gov_action_id.side_effect = _api_error(500)
+        gov_id = GovActionId(
+            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
+        )
+        with pytest.raises(BlockfrostError):
+            context.gov_action_info(gov_id)
+
+
+class TestGovActionVotes:
+    VOTES = [
+        _ns(
+            {
+                "voter_role": "constitutional_committee",
+                "voter": "cc_hot1x",
+                "vote": "yes",
+                "counted": True,
+            }
+        ),
+        _ns({"voter_role": "drep", "voter": DREP_ID, "vote": "no", "counted": True}),
+        _ns(
+            {"voter_role": "spo", "voter": "pool1x", "vote": "abstain", "counted": True}
+        ),
+    ]
+
+    def test_splits_votes_by_role(self, context):
+        context.api.governance_proposal_by_gov_action_id.return_value = _proposal()
+        context.api.governance_proposal_votes_by_gov_action_id.return_value = self.VOTES
+        gov_id = GovActionId(
+            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
+        )
+
+        votes = context.gov_action_votes(gov_id)
+
+        assert len(votes.committee_votes) == 1
+        assert len(votes.drep_votes) == 1
+        assert len(votes.stake_pool_votes) == 1
+        assert votes.drep_votes[0].vote == Vote.NO
+        assert votes.stake_pool_votes[0].vote == Vote.ABSTAIN
+        assert votes.stake_pool_votes[0].voter == "pool1x"
+        assert votes.deposit == 100000000000
+
+    def test_no_votes_yields_empty_lists(self, context):
+        context.api.governance_proposal_by_gov_action_id.return_value = _proposal()
+        context.api.governance_proposal_votes_by_gov_action_id.return_value = []
+        gov_id = GovActionId(
+            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
+        )
+        votes = context.gov_action_votes(gov_id)
+        assert votes.committee_votes == []
+        assert votes.drep_votes == []
+
+    def test_unknown_role_is_skipped(self, context):
+        context.api.governance_proposal_by_gov_action_id.return_value = _proposal()
+        context.api.governance_proposal_votes_by_gov_action_id.return_value = [
+            _ns({"voter_role": "martian", "voter": "x", "vote": "yes"})
+        ]
+        gov_id = GovActionId(
+            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
+        )
+        votes = context.gov_action_votes(gov_id)
+        assert not (votes.committee_votes or votes.drep_votes or votes.stake_pool_votes)
+
+
+class TestGovActionsAll:
+    def test_fetches_detail_and_votes_per_proposal(self, context):
+        context.api.governance_proposals.return_value = [
+            _ns({"tx_hash": TX_HASH, "cert_index": 0}),
+            _ns({"tx_hash": TX_HASH, "cert_index": 1}),
+        ]
+        context.api.governance_proposal_by_gov_action_id.return_value = _proposal()
+        context.api.governance_proposal_votes_by_gov_action_id.return_value = []
+
+        results = context.gov_actions_all()
+
+        assert len(results) == 2
+        assert context.api.governance_proposal_by_gov_action_id.call_count == 2
+
+    def test_skips_rows_without_an_identifier(self, context):
+        context.api.governance_proposals.return_value = [_ns({"governance_type": "x"})]
+        assert context.gov_actions_all() == []
+
+    def test_api_failure_is_wrapped(self, context):
+        context.api.governance_proposals.side_effect = _api_error(500)
+        with pytest.raises(BlockfrostError):
+            context.gov_actions_all()
+
+
 # -- Queries Blockfrost cannot answer -------------------------------------
 
 
 def test_unimplemented_queries_raise(context):
-    """Blockfrost cannot answer these, so they must keep raising rather than
-    return an empty or invented answer."""
-    gov_action_id = GovActionId(
-        transaction_id=bytes.fromhex(TX_HASH), gov_action_index=0
-    )
+    """What is left must keep raising rather than return an invented answer.
 
+    `blockfrost-python` 0.7.0 wraps the DRep and proposal endpoints but no
+    committee endpoint, even though the Blockfrost API has
+    ``/governance/committee``. And ``/network/eras`` returns era boundaries
+    without naming the eras, so the current era cannot be identified from it.
+    """
     with pytest.raises(NotImplementedError):
         _ = context.era
-    with pytest.raises(NotImplementedError):
-        context.drep_info(MagicMock())
-    with pytest.raises(NotImplementedError):
-        context.gov_action_info(gov_action_id)
-    with pytest.raises(NotImplementedError):
-        context.gov_action_votes(gov_action_id)
-    with pytest.raises(NotImplementedError):
-        context.gov_actions_all()
     with pytest.raises(NotImplementedError):
         context.committee_member_info()
     with pytest.raises(NotImplementedError):
         context.committee_state()
-    with pytest.raises(NotImplementedError):
-        context.drep_stake_distribution()

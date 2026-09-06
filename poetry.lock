@@ -153,14 +153,14 @@ uvloop = ["uvloop (>=0.15.2) ; sys_platform != \"win32\"", "winloop (>=0.5.0) ; 
 
 [[package]]
 name = "blockfrost-python"
-version = "0.6.0"
-description = "The official Python SDK for Blockfrost API v0.1.37"
+version = "0.7.0"
+description = "The official Python SDK for Blockfrost API v0.1.86"
 optional = false
-python-versions = "<4,>=3.7"
+python-versions = "<4,>=3.10"
 groups = ["main"]
 files = [
-    {file = "blockfrost_python-0.6.0-py3-none-any.whl", hash = "sha256:c88840b8034b30dc06c637ccd14806e472d830d63522d2a667d9263640a354f4"},
-    {file = "blockfrost_python-0.6.0.tar.gz", hash = "sha256:764b795617aadfd712b2a214fa6bd26cca33f0008340e0225126d18be040b112"},
+    {file = "blockfrost_python-0.7.0-py3-none-any.whl", hash = "sha256:54eb2693af99d2894c33cea844d888b68187250288d48f8b1e2d79d44f810daf"},
+    {file = "blockfrost_python-0.7.0.tar.gz", hash = "sha256:79a5904fcda56a01b1c5cca3f493e233f6e6ac78f48b96a232842ee826bd2db2"},
 ]
 
 [package.dependencies]

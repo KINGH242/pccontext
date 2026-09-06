@@ -398,7 +398,7 @@ Which backend answers what
    * - ``drep_info``
      - yes
      - \-
-     - \-
+     - yes
      - \-
      - via wrapped
      - \-
@@ -406,7 +406,7 @@ Which backend answers what
    * - ``gov_action_info``
      - yes
      - \-
-     - \-
+     - yes
      - \-
      - via wrapped
      - \-
@@ -414,7 +414,7 @@ Which backend answers what
    * - ``gov_action_votes``
      - yes
      - \-
-     - \-
+     - yes
      - \-
      - via wrapped
      - \-
@@ -422,7 +422,7 @@ Which backend answers what
    * - ``gov_actions_all``
      - yes
      - \-
-     - \-
+     - yes
      - \-
      - via wrapped
      - \-
@@ -446,7 +446,7 @@ Which backend answers what
    * - ``drep_stake_distribution``
      - yes
      - \-
-     - \-
+     - yes
      - \-
      - via wrapped
      - \-
@@ -461,13 +461,22 @@ Which backend answers what
      - \-
 
 ``cardano-cli`` answers all fifteen because it talks straight to a node socket.
-The hosted APIs stop short of Conway governance for the same reason in each
-case: the services expose those endpoints, but the Python SDKs this library
-depends on — ``koios-python`` 2.0.0 and ``blockfrost-python`` 0.6.0 — wrap none
-of them, and the installed ``ogmios`` client has no binding for
-``governanceProposals``, ``delegateRepresentatives`` or
-``operationalCertificates``. Kupo delegates everything to the context it wraps,
-so its row is whatever that backend supports.
+
+Blockfrost covers most of Conway governance since ``blockfrost-python`` 0.7.0,
+which added the DRep and proposal endpoints. Two gaps remain: 0.7.0 wraps no
+committee endpoint even though the Blockfrost API has ``/governance/committee``,
+and ``/network/eras`` returns era boundaries without naming the eras, so the
+current era cannot be identified from it.
+
+Koios and Ogmios stop earlier, and in both cases the limit is the client
+library rather than the service. ``koios-python`` 2.0.0 wraps none of Koios'
+governance endpoints — ``/drep_info``, ``/committee_info``, ``/proposal_list``
+and ``/proposal_votes`` all exist and answer — and the installed ``ogmios``
+client has no binding for ``governanceProposals``,
+``delegateRepresentatives`` or ``operationalCertificates``.
+
+Kupo delegates everything to the context it wraps, so its row is whatever that
+backend supports.
 
 Because unsupported queries raise rather than return ``None``, code that must
 work across backends should either catch :class:`NotImplementedError` or pick a

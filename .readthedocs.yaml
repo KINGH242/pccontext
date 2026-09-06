@@ -9,9 +9,11 @@ build:
   jobs:
     post_create_environment:
       - pip install "poetry==2.1.3"
-      - poetry config virtualenvs.create false
     post_install:
-      - poetry install --with docs
+      # VIRTUAL_ENV must point at the environment Read the Docs actually builds
+      # in, so Poetry installs into it. Without this, Poetry installs elsewhere
+      # and Sphinx fails to import the project's dependencies.
+      - VIRTUAL_ENV=$READTHEDOCS_VIRTUALENV_PATH poetry install --with docs
 
 sphinx:
   configuration: docs/source/conf.py

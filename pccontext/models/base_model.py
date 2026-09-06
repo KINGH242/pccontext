@@ -2,13 +2,14 @@ import contextlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Dict, List, Type, TypeVar, Union
 
 from pycardano import Address, TransactionId, UTxO
 
-from pccontext.enums import AddressType, Era, Network
+from pccontext.enums import Era, Network
 from pccontext.utils import DATE_FORMAT_2
 
 T = TypeVar("T", bound="BaseModel")
@@ -131,7 +132,10 @@ class BaseModel:
                     result[field_name] = str(value)
                 elif isinstance(value, UTxO):
                     result[field_name] = value.to_shallow_primitive()
-                elif isinstance(value, (AddressType, Era, Network)):
+                elif isinstance(value, Enum):
+                    # Every enum serialises by value. Listing them
+                    # individually meant TransactionType and HistoryType
+                    # fell through to json.dumps and raised.
                     result[field_name] = value.value
                 elif isinstance(value, Path):
                     result[field_name] = value.as_posix()

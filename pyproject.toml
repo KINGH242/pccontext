@@ -30,12 +30,15 @@ requests = "^2.32.4"
 cachetools = ">=5.5.2,<6.0.0"
 ogmios = "^1.4.2"
 pycardano =  "^0.19.0"
+# Pinned below 6.0.0: pycardano's cbor2pure shim is incompatible with cbor2 6.x.
+# Floor of 5.9.0 addresses GHSA-3c37-wwvx-h642.
+cbor2 = ">=5.9.0,<6.0.0"
 yaci-client = "^1.0"
 
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.3.2"
-black = "^24.8.0"
+pytest = "^9.0.3"
+black = "^26.3.1"
 flake8 = "^7.1.1"
 mypy = "^1.14.1"
 ruff = "^0.6.3"

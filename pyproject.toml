@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [project.urls]
-homepage = "https://github.com/Python-Cardano/pycardano"
+homepage = "https://github.com/KINGH242/pccontext"
 repository = "https://github.com/KINGH242/pccontext.git"
 documentation = "https://pycardano.readthedocs.io/en/latest/"
 

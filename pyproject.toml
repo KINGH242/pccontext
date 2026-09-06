@@ -1,6 +1,6 @@
 [project]
 name = "pccontext"
-version = "0.7.2"
+version = "0.7.3"
 description = "Chain Contexts for PyCardano library"
 readme = "README.md"
 license = "MIT"
@@ -68,7 +68,7 @@ addopts = "-p no:cacheprovider"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.7.2"
+version = "0.7.3"
 version_files = [
     "pccontext/__init__.py:__version__",
     "pyproject.toml:version"

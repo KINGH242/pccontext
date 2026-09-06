@@ -1,3 +1,10 @@
+## 0.7.3 (2026-09-06)
+
+### Fix
+
+- point homepage at this project
+- correct author email typo in package metadata
+
 ## 0.7.2 (2026-09-06)
 
 ### Fix

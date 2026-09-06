@@ -5,16 +5,17 @@ helper functions for working with and building certain types of transactions.
 
 ### Documentation
 
-Full documentation lives in `docs/`. To build it locally:
+Full documentation is at **https://pccontext.readthedocs.io**. It covers how each
+chain context is configured, the staking and governance transaction helpers, a
+full API reference, and — if you are coming from PyCardano's built-in chain
+contexts — a page on what differs between them.
+
+To build it locally:
 
 ```bash
 poetry install --with docs
 make docs
 ```
-
-It covers how each chain context is configured, the staking and governance
-transaction helpers, a full API reference, and — if you are coming from
-PyCardano's built-in chain contexts — a page on what differs between them.
 
 ### Chain Context Usage
 

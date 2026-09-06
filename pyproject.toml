@@ -35,7 +35,7 @@ dependencies = [
 [project.urls]
 homepage = "https://github.com/KINGH242/pccontext"
 repository = "https://github.com/KINGH242/pccontext.git"
-documentation = "https://pycardano.readthedocs.io/en/latest/"
+documentation = "https://pccontext.readthedocs.io/en/latest/"
 
 
 [tool.poetry.group.dev.dependencies]

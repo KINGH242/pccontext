@@ -1,0 +1,4 @@
+Exceptions
+==========
+
+.. automodule:: pccontext.exceptions

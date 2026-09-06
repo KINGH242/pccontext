@@ -72,3 +72,23 @@ jobs:
 
       - name: isort
         run: poetry run isort --check-only .
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Poetry
+        run: pipx install "poetry==${POETRY_VERSION}"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: poetry
+
+      - name: Install dependencies
+        run: poetry install --with docs
+
+      - name: Build docs (warnings are errors)
+        run: poetry run sphinx-build -W --keep-going -b html docs/source docs/build/html

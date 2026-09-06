@@ -51,6 +51,11 @@ flake8-pyproject = "^1.2.3"
 freezegun = "^1.5.1"
 
 
+[tool.poetry.group.docs.dependencies]
+sphinx = ">=8.1,<9.0"
+sphinx-rtd-theme = ">=3.0,<4.0"
+
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

@@ -58,10 +58,14 @@ def stake_address_registration_and_vote_delegation(
         and stake_address_info[0].active_epoch is not None
     ):
         delegation_pool_id = stake_address_info[0].stake_delegation
+        delegation_info = (
+            f"Account is currently delegated to Pool with ID:  {delegation_pool_id}\n"
+            if delegation_pool_id is not None
+            else ""
+        )
         raise TransactionError(
             f"Stake-Address: {str(stake_address)} is already registered on the chain!\n "
-            f"{f"Account is currently delegated to Pool with ID: "
-               f" {delegation_pool_id}\n" if delegation_pool_id is not None else ''}"
+            f"{delegation_info}"
         )
 
     builder = TransactionBuilder(context)

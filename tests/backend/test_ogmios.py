@@ -3,6 +3,7 @@ from fractions import Fraction
 from unittest.mock import patch
 
 from ogmios.statequery import (
+    QueryEraSummaries,
     QueryGenesisConfiguration,
     QueryNetworkTip,
     QueryProtocolParameters,
@@ -19,8 +20,9 @@ class TestOgmiosChainContext:
     def test_protocol_param(
         self, ogmios_chain_context, ogmios_protocol_parameters_response
     ):
-        with patch(
-            "ogmios.statequery.QueryProtocolParameters.QueryProtocolParameters.execute",
+        with patch.object(
+            QueryProtocolParameters,
+            "execute",
             return_value=QueryProtocolParameters._parse_QueryProtocolParameters_response(
                 ogmios_protocol_parameters_response
             ),
@@ -126,13 +128,15 @@ class TestOgmiosChainContext:
         ogmios_era_summary,
         ogmios_genesis_shelley_config_response,
     ):
-        with patch(
-            "ogmios.statequery.QueryGenesisConfiguration.QueryGenesisConfiguration.execute",
+        with patch.object(
+            QueryGenesisConfiguration,
+            "execute",
             return_value=QueryGenesisConfiguration._parse_QueryGenesisConfiguration_response(
                 ogmios_genesis_shelley_config_response
             ),
-        ), patch(
-            "ogmios.statequery.QueryEraSummaries.QueryEraSummaries.execute",
+        ), patch.object(
+            QueryEraSummaries,
+            "execute",
             return_value=(
                 ogmios_era_summary,
                 None,
@@ -161,14 +165,16 @@ class TestOgmiosChainContext:
     def test_utxo(
         self, ogmios_chain_context, ogmios_network_tip_response, ogmios_utxos_response
     ):
-        with patch(
-            "ogmios.statequery.QueryUtxo.QueryUtxo.execute",
+        with patch.object(
+            QueryUtxo,
+            "execute",
             side_effect=(
                 QueryUtxo._parse_QueryUtxo_response(ogmios_utxos_response),
                 None,
             ),
-        ), patch("ogmios.client.connect"), patch(
-            "ogmios.statequery.QueryNetworkTip.QueryNetworkTip.execute",
+        ), patch("ogmios.client.connect"), patch.object(
+            QueryNetworkTip,
+            "execute",
             side_effect=(
                 QueryNetworkTip._parse_QueryNetworkTip_response(
                     ogmios_network_tip_response
@@ -310,14 +316,16 @@ class TestOgmiosChainContext:
     def test_utxo_by_tx_id(
         self, ogmios_chain_context, ogmios_network_tip_response, ogmios_utxos_response
     ):
-        with patch(
-            "ogmios.statequery.QueryUtxo.QueryUtxo.execute",
+        with patch.object(
+            QueryUtxo,
+            "execute",
             side_effect=(
                 QueryUtxo._parse_QueryUtxo_response(ogmios_utxos_response),
                 None,
             ),
-        ), patch("ogmios.client.connect"), patch(
-            "ogmios.statequery.QueryNetworkTip.QueryNetworkTip.execute",
+        ), patch("ogmios.client.connect"), patch.object(
+            QueryNetworkTip,
+            "execute",
             side_effect=(
                 QueryNetworkTip._parse_QueryNetworkTip_response(
                     ogmios_network_tip_response

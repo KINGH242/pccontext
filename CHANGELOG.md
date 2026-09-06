@@ -1,3 +1,21 @@
+## 0.8.0 (2026-09-06)
+
+### Feat
+
+- close the remaining gaps on Ogmios, Yaci and the offline context
+- implement Blockfrost committee queries against the fork
+- derive the current era on the Blockfrost backend
+- implement Koios governance queries against the fork
+- use blockfrost-python 0.7.0 governance endpoints
+- implement the extended queries across four backends
+- extend ChainContext with stake, pool and governance queries
+
+### Fix
+
+- degrade gracefully when a client lacks a governance endpoint
+- distinguish unknown stake from measured zero
+- serialise every enum in BaseModel.to_dict
+
 ## 0.7.4 (2026-09-06)
 
 ### Fix

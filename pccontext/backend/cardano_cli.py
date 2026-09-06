@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import cbor2
 import docker
@@ -26,16 +26,19 @@ from pycardano.nativescript import NativeScript
 from pycardano.network import Network as PyCardanoNetwork
 from pycardano.plutus import (
     Datum,
+    ExecutionUnits,
     PlutusV1Script,
     PlutusV2Script,
     PlutusV3Script,
     RawPlutusData,
+    RedeemerTag,
 )
 from pycardano.serialization import RawCBOR
 from pycardano.transaction import (
     Asset,
     AssetName,
     MultiAsset,
+    Transaction,
     TransactionInput,
     TransactionOutput,
     UTxO,
@@ -45,6 +48,7 @@ from pycardano.types import JsonDict
 
 from pccontext.backend import ChainContext
 from pccontext.enums import Network
+from pccontext.exceptions import CardanoCLIError
 from pccontext.models import GenesisParameters, ProtocolParameters, StakeAddressInfo
 
 __all__ = ["CardanoCliChainContext", "DockerConfig"]
@@ -422,6 +426,251 @@ class CardanoCliChainContext(ChainContext):
                     ) from err
 
         return txid
+
+    @staticmethod
+    def _redeemer_keys(cbor: Union[bytes, str]) -> List[str]:
+        """The transaction's redeemer keys, in canonical ledger order.
+
+        Keys are formatted the way :class:`pycardano.txbuilder.TransactionBuilder` looks them
+        up when it assigns estimated execution units, that is
+        ``f"{redeemer.tag.name.lower()}:{redeemer.index}"`` -- for example ``"spend:0"``.
+
+        Args:
+            cbor (Union[bytes, str]): The serialized transaction.
+
+        Returns:
+            List[str]: The redeemer keys, ordered by redeemer tag then index. Empty if the
+            transaction carries no redeemers.
+        """
+        tx = Transaction.from_cbor(cbor)
+        redeemers = tx.transaction_witness_set.redeemer
+        if not redeemers:
+            return []
+
+        pairs: List[Tuple[int, int]] = []
+        if hasattr(redeemers, "items"):  # Conway: a RedeemerKey -> RedeemerValue map
+            for redeemer_key in redeemers.keys():
+                pairs.append((RedeemerTag(redeemer_key.tag).value, redeemer_key.index))
+        else:  # Legacy: a plain list of Redeemer
+            for redeemer in redeemers:
+                pairs.append((RedeemerTag(redeemer.tag).value, redeemer.index))
+
+        pairs.sort()
+        return [f"{RedeemerTag(tag).name.lower()}:{index}" for tag, index in pairs]
+
+    #: Maps the redeemer purpose names other tools use onto the :class:`RedeemerTag` names that
+    #: pycardano keys execution units by.
+    _PURPOSE_ALIASES = {
+        "spend": "spend",
+        "mint": "mint",
+        "cert": "certificate",
+        "certificate": "certificate",
+        "publish": "certificate",
+        "withdraw": "withdrawal",
+        "withdrawal": "withdrawal",
+        "vote": "voting",
+        "voting": "voting",
+        "propose": "proposing",
+        "proposal": "proposing",
+        "proposing": "proposing",
+    }
+
+    #: Fragments cardano-cli's argument parser emits when it is asked for a command or an
+    #: option it does not have. A failure carrying one of these means the installed cli cannot
+    #: be driven the way this backend needs, rather than that the transaction is bad.
+    _UNSUPPORTED_COMMAND_MARKERS = (
+        "invalid argument",
+        "invalid option",
+        "unknown option",
+        "missing:",
+    )
+
+    @classmethod
+    def _is_unsupported_command(cls, error: CardanoCliError) -> bool:
+        """Whether `error` is cardano-cli rejecting the command line, not the transaction."""
+        text = str(error).lower()
+        return any(marker in text for marker in cls._UNSUPPORTED_COMMAND_MARKERS)
+
+    def _version_or_unknown(self) -> str:
+        """The installed cli version, for error messages; never raises."""
+        try:
+            return self.version().splitlines()[0].strip()
+        except (
+            Exception
+        ):  # noqa: BLE001 - diagnostics must not mask the original failure
+            return "cardano-cli version unknown"
+
+    @classmethod
+    def _parse_script_costs(
+        cls, payload: Any, redeemer_keys: List[str]
+    ) -> Dict[str, ExecutionUnits]:
+        """Turn ``calculate-plutus-script-cost`` output into execution units per redeemer.
+
+        The command reports one entry per Plutus script in the transaction. Entries that name
+        their own redeemer purpose and index are keyed on that; entries that only report a
+        script hash and a cost are paired positionally with ``redeemer_keys``, which is sound
+        because both sides are in canonical redeemer order.
+
+        Args:
+            payload (Any): The parsed JSON emitted by the cli.
+            redeemer_keys (List[str]): Keys from :meth:`_redeemer_keys`, used for the
+                positional fallback and to validate the entry count.
+
+        Returns:
+            Dict[str, ExecutionUnits]: Execution units keyed by ``"{purpose}:{index}"``.
+
+        Raises:
+            :class:`TransactionFailedException`: When the output is not shaped as expected, is
+                missing execution units, or reports a number of entries that cannot be matched
+                to the transaction's redeemers.
+        """
+        if isinstance(payload, dict):
+            # Tolerate a wrapper object around the list of costs.
+            for wrapper in ("result", "scripts", "plutusScripts"):
+                if isinstance(payload.get(wrapper), list):
+                    payload = payload[wrapper]
+                    break
+        if not isinstance(payload, list):
+            raise TransactionFailedException(
+                f"Unexpected plutus script cost output: {payload!r}"
+            )
+
+        costs: Dict[str, ExecutionUnits] = {}
+        for position, entry in enumerate(payload):
+            if not isinstance(entry, dict):
+                raise TransactionFailedException(
+                    f"Unexpected plutus script cost entry: {entry!r}"
+                )
+
+            units = entry.get("executionUnits", entry.get("execution_units", entry))
+            if not isinstance(units, dict):
+                raise TransactionFailedException(
+                    f"Plutus script cost entry has no execution units: {entry!r}"
+                )
+            memory = units.get("memory", units.get("mem"))
+            steps = units.get("steps", units.get("cpu"))
+            if memory is None or steps is None:
+                # A script the node could not run reports an error instead of a cost.
+                raise TransactionFailedException(
+                    f"Plutus script evaluation failed: {entry!r}"
+                )
+
+            validator = entry.get("validator")
+            validator = validator if isinstance(validator, dict) else {}
+            purpose = entry.get("purpose", validator.get("purpose"))
+            index = entry.get("index", validator.get("index"))
+            if purpose is not None and index is not None:
+                tag = cls._PURPOSE_ALIASES.get(str(purpose).lower())
+                if tag is None:
+                    raise TransactionFailedException(
+                        f"Unknown redeemer purpose in plutus script cost output: {purpose!r}"
+                    )
+                key = f"{tag}:{index}"
+            elif position < len(redeemer_keys):
+                key = redeemer_keys[position]
+            else:
+                raise TransactionFailedException(
+                    f"cardano-cli reported {len(payload)} plutus script costs but the "
+                    f"transaction has {len(redeemer_keys)} redeemers: {payload!r}"
+                )
+
+            costs[key] = ExecutionUnits(mem=int(memory), steps=int(steps))
+
+        return costs
+
+    def evaluate_tx_cbor(self, cbor: Union[bytes, str]) -> Dict[str, ExecutionUnits]:
+        """Evaluate execution units of a transaction.
+
+        Runs ``cardano-cli latest transaction calculate-plutus-script-cost online``, which
+        costs the transaction's Plutus scripts against the local node's ledger state. This
+        needs the same node socket the rest of this context already uses -- unlike the
+        ``offline`` mode of that command, which would additionally require an era history, a
+        utxo file and a protocol parameters file to be supplied by hand.
+
+        Args:
+            cbor (Union[bytes, str]): The serialized transaction to be evaluated.
+
+        Returns:
+            Dict[str, ExecutionUnits]: Execution units keyed by ``"{purpose}:{index}"``, for
+            example ``"spend:0"``. Empty when the transaction has no redeemers.
+
+        Raises:
+            :class:`pccontext.exceptions.CardanoCLIError`: When the installed cardano-cli has
+                no ``calculate-plutus-script-cost`` command this backend can drive, which is
+                the case for older releases.
+            :class:`TransactionFailedException`: When the cli runs but fails to evaluate the
+                transaction.
+        """
+        if isinstance(cbor, bytes):
+            cbor = cbor.hex()
+
+        redeemer_keys = self._redeemer_keys(cbor)
+        if not redeemer_keys:
+            return {}
+
+        with tempfile.NamedTemporaryFile(mode="w") as tmp_tx_file:
+            tx_json = {
+                "type": f"Witnessed Tx {self.era}Era",
+                "description": "Generated by PyCardano",
+                "cborHex": cbor,
+            }
+
+            tmp_tx_file.write(json.dumps(tx_json))
+
+            tmp_tx_file.flush()
+
+            socket = getattr(self, "_socket", None)
+            socket_args = ["--socket-path", socket.as_posix()] if socket else []
+            tx_args = ["--tx-file", tmp_tx_file.name]
+
+            # `online` split off from a flat command in cardano-cli 10; try newest first.
+            attempts = [
+                ["latest", "transaction", "calculate-plutus-script-cost", "online"]
+                + socket_args
+                + self._network_args
+                + tx_args,
+                ["transaction", "calculate-plutus-script-cost", "online"]
+                + socket_args
+                + self._network_args
+                + tx_args,
+                ["transaction", "calculate-plutus-script-cost"]
+                + self._network_args
+                + tx_args,
+            ]
+
+            result = None
+            errors: List[CardanoCliError] = []
+            for cmd in attempts:
+                try:
+                    result = self._run_command(cmd)
+                    break
+                except CardanoCliError as err:
+                    errors.append(err)
+
+            if result is None:
+                if errors and all(map(self._is_unsupported_command, errors)):
+                    raise CardanoCLIError(
+                        command=" ".join(attempts[0]),
+                        message=(
+                            "This cardano-cli does not provide "
+                            "`transaction calculate-plutus-script-cost` in a form this "
+                            "backend can drive, so it cannot evaluate Plutus script costs "
+                            f"({self._version_or_unknown()}). Upgrade cardano-cli, or use a "
+                            "backend that evaluates transactions itself, such as Ogmios."
+                        ),
+                    )
+                raise TransactionFailedException(
+                    f"Failed to evaluate transaction: {errors[-1] if errors else result!r}"
+                ) from (errors[-1] if errors else None)
+
+        try:
+            payload = json.loads(result)
+        except json.JSONDecodeError as err:
+            raise TransactionFailedException(
+                f"Unable to parse plutus script cost output: {result!r}"
+            ) from err
+
+        return self._parse_script_costs(payload, redeemer_keys)
 
     def stake_address_info(self, stake_address: str) -> List[StakeAddressInfo]:
         """Get the stake address information.

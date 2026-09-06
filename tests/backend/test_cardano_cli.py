@@ -1,12 +1,62 @@
+import json
+
+import pytest
 from pycardano import (
     DatumHash,
+    ExecutionUnits,
     MultiAsset,
+    PlutusData,
     PlutusV2Script,
     RawPlutusData,
+    Redeemer,
+    RedeemerTag,
+    Transaction,
+    TransactionBody,
     TransactionInput,
+    TransactionWitnessSet,
 )
+from pycardano.exception import CardanoCliError, TransactionFailedException
 
+from pccontext import CardanoCliChainContext
+from pccontext.exceptions import CardanoCLIError
 from pccontext.models import GenesisParameters, ProtocolParameters
+
+
+class _Action(PlutusData):
+    """A minimal redeemer payload; the contents never matter to the cost parser."""
+
+    CONSTR_ID = 0
+
+
+def _tx_with_redeemers(*specs) -> str:
+    """Build a transaction carrying `(tag, index)` redeemers and return its cbor hex."""
+    redeemers = []
+    for tag, index in specs:
+        redeemer = Redeemer(_Action())
+        redeemer.tag = tag
+        redeemer.index = index
+        redeemer.ex_units = ExecutionUnits(0, 0)
+        redeemers.append(redeemer)
+    witness_set = TransactionWitnessSet(redeemer=redeemers or None)
+    body = TransactionBody(inputs=[], outputs=[], fee=0)
+    return Transaction(body, witness_set).to_cbor_hex()
+
+
+def _stub_costs(chain_context, payload):
+    """Point the context's cli at `payload`, and record the commands it runs."""
+    commands = []
+    original = chain_context._run_command
+
+    def run(cmd):
+        commands.append(cmd)
+        if "calculate-plutus-script-cost" in cmd:
+            if isinstance(payload, Exception):
+                raise payload
+            return json.dumps(payload)
+        return original(cmd)
+
+    chain_context._run_command = run
+    return commands
 
 
 class TestCardanoCliChainContext:
@@ -141,3 +191,186 @@ class TestCardanoCliChainContext:
             == "pool1q8m9x2zsux7va6w892g38tvchnzahvcd9tykqf3ygnmwta8k2v59pcduem5uw253zwke30x9mwes62kfvqnzg38kuh6q966kg7"
         )
         assert stake_address_info[0].vote_delegation == "always-abstain"
+
+    def test_redeemer_keys_are_in_canonical_order(self):
+        cbor = _tx_with_redeemers(
+            (RedeemerTag.MINT, 1), (RedeemerTag.SPEND, 0), (RedeemerTag.SPEND, 2)
+        )
+
+        assert CardanoCliChainContext._redeemer_keys(cbor) == [
+            "spend:0",
+            "spend:2",
+            "mint:1",
+        ]
+
+    def test_redeemer_keys_without_redeemers(self):
+        assert CardanoCliChainContext._redeemer_keys(_tx_with_redeemers()) == []
+
+    def test_evaluate_tx_cbor_pairs_costs_positionally(self, chain_context):
+        """cardano-cli reports a script hash and a cost, with no redeemer pointer."""
+        cbor = _tx_with_redeemers((RedeemerTag.MINT, 1), (RedeemerTag.SPEND, 0))
+        commands = _stub_costs(
+            chain_context,
+            [
+                {
+                    "scriptHash": "aa" * 28,
+                    "executionUnits": {"memory": 1700, "steps": 476468},
+                    "lovelaceCost": 123,
+                },
+                {
+                    "scriptHash": "bb" * 28,
+                    "executionUnits": {"memory": 22, "steps": 33},
+                    "lovelaceCost": 4,
+                },
+            ],
+        )
+
+        assert chain_context.evaluate_tx_cbor(cbor) == {
+            "spend:0": ExecutionUnits(1700, 476468),
+            "mint:1": ExecutionUnits(22, 33),
+        }
+
+        cost_command = next(
+            cmd for cmd in commands if "calculate-plutus-script-cost" in cmd
+        )
+        assert cost_command[:4] == [
+            "latest",
+            "transaction",
+            "calculate-plutus-script-cost",
+            "online",
+        ]
+        assert "--tx-file" in cost_command
+
+    def test_evaluate_tx_cbor_uses_reported_purpose(self, chain_context):
+        """When the output names the redeemer itself, order stops mattering."""
+        cbor = _tx_with_redeemers((RedeemerTag.MINT, 1), (RedeemerTag.SPEND, 0))
+        _stub_costs(
+            chain_context,
+            [
+                {
+                    "executionUnits": {"memory": 9, "steps": 8},
+                    "purpose": "mint",
+                    "index": 1,
+                },
+                {
+                    "executionUnits": {"memory": 7, "steps": 6},
+                    "purpose": "spend",
+                    "index": 0,
+                },
+            ],
+        )
+
+        assert chain_context.evaluate_tx_cbor(cbor) == {
+            "mint:1": ExecutionUnits(9, 8),
+            "spend:0": ExecutionUnits(7, 6),
+        }
+
+    def test_evaluate_tx_cbor_translates_purpose_aliases(self, chain_context):
+        cbor = _tx_with_redeemers((RedeemerTag.WITHDRAWAL, 0))
+        _stub_costs(
+            chain_context,
+            [
+                {
+                    "executionUnits": {"memory": 1, "steps": 2},
+                    "purpose": "withdraw",
+                    "index": 0,
+                }
+            ],
+        )
+
+        assert chain_context.evaluate_tx_cbor(cbor) == {
+            "withdrawal:0": ExecutionUnits(1, 2)
+        }
+
+    def test_evaluate_tx_cbor_without_redeemers_skips_the_cli(self, chain_context):
+        commands = _stub_costs(chain_context, [])
+
+        assert chain_context.evaluate_tx_cbor(_tx_with_redeemers()) == {}
+        assert not any("calculate-plutus-script-cost" in cmd for cmd in commands)
+
+    def test_evaluate_tx_cbor_rejects_a_failed_script(self, chain_context):
+        cbor = _tx_with_redeemers((RedeemerTag.SPEND, 0))
+        _stub_costs(
+            chain_context, [{"scriptHash": "aa" * 28, "error": "validation failed"}]
+        )
+
+        with pytest.raises(TransactionFailedException):
+            chain_context.evaluate_tx_cbor(cbor)
+
+    def test_evaluate_tx_cbor_rejects_more_costs_than_redeemers(self, chain_context):
+        cbor = _tx_with_redeemers((RedeemerTag.SPEND, 0))
+        _stub_costs(
+            chain_context,
+            [
+                {"executionUnits": {"memory": 1, "steps": 2}},
+                {"executionUnits": {"memory": 3, "steps": 4}},
+            ],
+        )
+
+        with pytest.raises(TransactionFailedException):
+            chain_context.evaluate_tx_cbor(cbor)
+
+    def test_evaluate_tx_cbor_rejects_unparseable_output(self, chain_context):
+        cbor = _tx_with_redeemers((RedeemerTag.SPEND, 0))
+        original = chain_context._run_command
+
+        def run(cmd):
+            if "calculate-plutus-script-cost" in cmd:
+                return "not json"
+            return original(cmd)
+
+        chain_context._run_command = run
+
+        with pytest.raises(TransactionFailedException):
+            chain_context.evaluate_tx_cbor(cbor)
+
+    def test_evaluate_tx_cbor_reports_an_unsupported_cli(self, chain_context):
+        """Older cardano-cli releases have no such command; say so, don't blame the tx."""
+        cbor = _tx_with_redeemers((RedeemerTag.SPEND, 0))
+        original = chain_context._run_command
+
+        def run(cmd):
+            if "calculate-plutus-script-cost" in cmd:
+                raise CardanoCliError(
+                    "Invalid argument `calculate-plutus-script-cost'\n\nUsage: cardano-cli"
+                )
+            return original(cmd)
+
+        chain_context._run_command = run
+
+        with pytest.raises(CardanoCLIError) as excinfo:
+            chain_context.evaluate_tx_cbor(cbor)
+
+        assert "calculate-plutus-script-cost" in excinfo.value.message
+        assert "cardano-cli 8.1.2" in excinfo.value.message
+
+    def test_evaluate_tx_cbor_reports_an_incompatible_option(self, chain_context):
+        cbor = _tx_with_redeemers((RedeemerTag.SPEND, 0))
+        original = chain_context._run_command
+
+        def run(cmd):
+            if "calculate-plutus-script-cost" in cmd:
+                raise CardanoCliError(
+                    "Invalid option `--socket-path'\n\nUsage: cardano-cli"
+                )
+            return original(cmd)
+
+        chain_context._run_command = run
+
+        with pytest.raises(CardanoCLIError):
+            chain_context.evaluate_tx_cbor(cbor)
+
+    def test_evaluate_tx_cbor_surfaces_a_real_cli_failure(self, chain_context):
+        """A cli that understood the command but could not evaluate is a tx failure."""
+        cbor = _tx_with_redeemers((RedeemerTag.SPEND, 0))
+        original = chain_context._run_command
+
+        def run(cmd):
+            if "calculate-plutus-script-cost" in cmd:
+                raise CardanoCliError("TxOutRefNotFound: unknown transaction input")
+            return original(cmd)
+
+        chain_context._run_command = run
+
+        with pytest.raises(TransactionFailedException, match="TxOutRefNotFound"):
+            chain_context.evaluate_tx_cbor(cbor)

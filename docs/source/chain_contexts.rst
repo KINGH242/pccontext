@@ -345,7 +345,7 @@ Which backend answers what
      - yes
      - yes
      - via wrapped
-     - \-
+     - yes
      - yes
    * - ``chain_tip``
      - yes
@@ -353,40 +353,40 @@ Which backend answers what
      - yes
      - yes
      - via wrapped
-     - \-
-     - \-
+     - yes
+     - yes
    * - ``utxo``
      - yes
      - yes
      - yes
      - yes
      - via wrapped
-     - \-
-     - \-
+     - yes
+     - yes
    * - ``stake_pools``
      - yes
      - yes
      - yes
      - yes
      - via wrapped
-     - \-
-     - \-
+     - yes
+     - yes
    * - ``stake_pool_info``
      - yes
      - yes
      - yes
      - yes
      - via wrapped
-     - \-
-     - \-
+     - yes
+     - yes
    * - ``kes_period_info``
      - yes
      - yes
      - yes
-     - \-
+     - yes
      - via wrapped
      - \-
-     - \-
+     - yes
    * - ``treasury``
      - yes
      - yes
@@ -394,39 +394,39 @@ Which backend answers what
      - yes
      - via wrapped
      - \-
-     - \-
+     - yes
    * - ``drep_info``
      - yes
      - yes
      - yes
-     - \-
+     - yes
      - via wrapped
-     - \-
-     - \-
+     - yes
+     - yes
    * - ``gov_action_info``
      - yes
      - yes
      - yes
-     - \-
+     - yes
      - via wrapped
-     - \-
-     - \-
+     - yes
+     - yes
    * - ``gov_action_votes``
      - yes
      - yes
      - yes
-     - \-
+     - yes
      - via wrapped
-     - \-
-     - \-
+     - yes
+     - yes
    * - ``gov_actions_all``
      - yes
      - yes
      - yes
-     - \-
+     - yes
      - via wrapped
-     - \-
-     - \-
+     - yes
+     - yes
    * - ``committee_member_info``
      - yes
      - yes
@@ -434,7 +434,7 @@ Which backend answers what
      - yes
      - via wrapped
      - \-
-     - \-
+     - yes
    * - ``committee_state``
      - yes
      - yes
@@ -442,15 +442,15 @@ Which backend answers what
      - yes
      - via wrapped
      - \-
-     - \-
+     - yes
    * - ``drep_stake_distribution``
      - yes
      - yes
      - yes
-     - \-
+     - yes
      - via wrapped
      - \-
-     - \-
+     - yes
    * - ``spo_stake_distribution``
      - yes
      - yes
@@ -458,24 +458,33 @@ Which backend answers what
      - yes
      - via wrapped
      - \-
-     - \-
+     - yes
 
-``cardano-cli`` answers all fifteen because it talks straight to a node socket.
-Koios and Blockfrost answer all fifteen too, though both needed work on their
-client libraries to get there — the services themselves have supported Conway
-governance throughout.
+``cardano-cli``, Koios, Blockfrost and the offline transfer file answer all
+fifteen. Kupo delegates everything to the context it wraps, so its row is
+whatever that backend supports — including that backend's
+:class:`NotImplementedError`.
 
-Ogmios is the one that stops short. The installed ``ogmios`` client has no
-binding for ``governanceProposals``, ``delegateRepresentatives`` or
-``operationalCertificates``, and 1.4.3 is its latest release, so unlike the
-other two there is nothing to upgrade to.
+Ogmios answers all fifteen as well, though three of its queries go out as
+hand-built JSON-RPC: the Python client has no binding for
+``operationalCertificates``, ``delegateRepresentatives`` or
+``governanceProposals``. Two limits follow from the protocol rather than the
+client — it cannot see a local operational certificate file, so the on-disk KES
+counters stay unset, and ``governanceProposals`` returns only *live* proposals,
+so a resolved action is absent rather than annotated and ``status`` is always
+``None``.
 
-Yaci DevKit implements none of them yet, and the offline transfer file answers
-only ``era``: the file it reads holds protocol parameters, genesis and UTxOs,
-and has nowhere to keep pool or governance state.
+Yaci DevKit answers nine. It indexes *events* rather than ledger state, so the
+queries it does answer for pools and DReps are reconstructions from certificate
+history — faithful for registration status, but it reports no stake figures at
+all rather than inventing them. What it cannot answer has no source in the
+index: the treasury, KES counters, committee membership and both stake
+distributions.
 
-Kupo delegates everything to the context it wraps, so its row is whatever that
-backend supports — including that backend's :class:`NotImplementedError`.
+The offline transfer file answers from what was captured, so its freshness is
+the capture's. A section the capture never wrote raises rather than returning
+empty — "the file has no committee section" and "the committee has no members"
+are different facts.
 
 Because unsupported queries raise rather than return ``None``, code that must
 work across backends should either catch :class:`NotImplementedError` or pick a

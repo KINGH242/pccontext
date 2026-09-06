@@ -1,3 +1,9 @@
+## 0.7.2 (2026-09-06)
+
+### Fix
+
+- restore Python 3.10/3.11 compatibility
+
 ## 0.7.1 (2026-09-06)
 
 ### Fix

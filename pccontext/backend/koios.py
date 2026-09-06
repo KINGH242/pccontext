@@ -536,6 +536,34 @@ class KoiosChainContext(ChainContext):
             return SingleHostName(port=port, dns_name=dns)
         return MultiHostName(dns_name=dns)
 
+    def _require_endpoint(self, name: str, query: str) -> Any:
+        """Resolve a koios-python client method, or explain its absence.
+
+        Koios itself has supported these endpoints throughout, but
+        ``koios-python`` 2.0.0 wraps none of them. Rather than let the call fail
+        with an ``AttributeError`` deep in the client, this reports the standard
+        :class:`NotImplementedError` the base class documents, so a caller that
+        already handles an unsupported query keeps working.
+
+        Args:
+            name (str): The client method to resolve.
+            query (str): The chain-context query being served, for the message.
+
+        Returns:
+            Any: The bound client method.
+
+        Raises:
+            NotImplementedError: When the installed client lacks the endpoint.
+        """
+        method = getattr(self.api, name, None)
+        if not callable(method):
+            raise NotImplementedError(
+                f"{query} is not implemented for {self.name}: the installed "
+                f"koios-python has no {name}. Koios supports the endpoint; the "
+                f"wrapper does not yet."
+            )
+        return method
+
     @staticmethod
     def _as_int(value: Any) -> Optional[int]:
         """Koios returns lovelace amounts as strings; normalise to int."""
@@ -629,7 +657,7 @@ class KoiosChainContext(ChainContext):
         """
         drep_id = drep.encode()
         try:
-            results = self.api.get_drep_info(drep_id)
+            results = self._require_endpoint("get_drep_info", "drep_info")(drep_id)
         except RequestException as e:
             logger.error(f"Failed to get info for DRep {drep_id}. Error: {e}")
             raise
@@ -708,9 +736,9 @@ class KoiosChainContext(ChainContext):
         epoch = self.epoch
         try:
             results = self._paginate(
-                lambda rng: self.api.get_drep_voting_power_history(
-                    epoch_no=epoch, content_range=rng
-                )
+                lambda rng: self._require_endpoint(
+                    "get_drep_voting_power_history", "drep_stake_distribution"
+                )(epoch_no=epoch, content_range=rng)
             )
         except RequestException as e:
             logger.error(f"Failed to get the DRep stake distribution. Error: {e}")
@@ -738,9 +766,9 @@ class KoiosChainContext(ChainContext):
         epoch = self.epoch
         try:
             results = self._paginate(
-                lambda rng: self.api.get_pool_voting_power_history(
-                    epoch_no=epoch, content_range=rng
-                )
+                lambda rng: self._require_endpoint(
+                    "get_pool_voting_power_history", "spo_stake_distribution"
+                )(epoch_no=epoch, content_range=rng)
             )
         except RequestException as e:
             logger.error(f"Failed to get the pool stake distribution. Error: {e}")
@@ -803,7 +831,7 @@ class KoiosChainContext(ChainContext):
             :class:`RequestException`: When the query fails.
         """
         try:
-            results = self.api.get_committee_info()
+            results = self._require_endpoint("get_committee_info", "committee_state")()
         except RequestException as e:
             logger.error(f"Failed to get the committee state. Error: {e}")
             raise
@@ -867,7 +895,9 @@ class KoiosChainContext(ChainContext):
         """
         try:
             return self._paginate(
-                lambda rng: self.api.get_proposal_list(content_range=rng)
+                lambda rng: self._require_endpoint(
+                    "get_proposal_list", "Governance proposal queries"
+                )(content_range=rng)
             )
         except RequestException as e:
             logger.error(f"Failed to get the governance proposal list. Error: {e}")
@@ -922,7 +952,12 @@ class KoiosChainContext(ChainContext):
     ) -> Tuple[List[CommitteeVote], List[DRepVote], List[StakePoolVote]]:
         """Fetch and split a proposal's votes by voter role."""
         try:
-            raw_votes = self.api.get_proposal_votes(proposal_id) or []
+            raw_votes = (
+                self._require_endpoint("get_proposal_votes", "Governance vote queries")(
+                    proposal_id
+                )
+                or []
+            )
         except RequestException as e:
             logger.error(f"Failed to get votes for {proposal_id}. Error: {e}")
             raise

@@ -874,6 +874,33 @@ class BlockFrostChainContext(ChainContext):
 
     # -- Governance --------------------------------------------------------
 
+    def _require_endpoint(self, name: str, query: str) -> Any:
+        """Resolve a blockfrost-python client method, or explain its absence.
+
+        The Blockfrost API has ``/governance/committee``, but
+        ``blockfrost-python`` 0.7.0 wraps no committee endpoint. Rather than
+        fail with an ``AttributeError``, report the :class:`NotImplementedError`
+        the base class documents.
+
+        Args:
+            name (str): The client method to resolve.
+            query (str): The chain-context query being served, for the message.
+
+        Returns:
+            Any: The bound client method.
+
+        Raises:
+            NotImplementedError: When the installed client lacks the endpoint.
+        """
+        method = getattr(self.api, name, None)
+        if not callable(method):
+            raise NotImplementedError(
+                f"{query} is not implemented for {self.name}: the installed "
+                f"blockfrost-python has no {name}. The Blockfrost API supports "
+                f"the endpoint; the wrapper does not yet."
+            )
+        return method
+
     @staticmethod
     def _as_optional_int(value: Any) -> Optional[int]:
         """Coerce a reported amount to int, keeping "not reported" apart from zero."""
@@ -1225,7 +1252,9 @@ class BlockFrostChainContext(ChainContext):
             :class:`BlockfrostError`: When the committee cannot be fetched.
         """
         try:
-            committee = self.api.governance_committee()
+            committee = self._require_endpoint(
+                "governance_committee", "committee_state"
+            )()
         except ApiError as e:
             raise BlockfrostError(f"Failed to fetch the committee state. {e}") from e
 

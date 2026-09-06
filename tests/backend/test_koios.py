@@ -602,3 +602,31 @@ class TestStakeDistributions:
             side_effect=[[{"pool_id_bech32": "pool1x", "amount": "1"}]],
         ):
             assert len(chain_context.spo_stake_distribution()) == 1
+
+
+class TestUnwrappedEndpointsDegradeGracefully:
+    """Released koios-python wraps none of the governance endpoints. Calling
+    one would otherwise fail with `AttributeError: 'URLs' object has no
+    attribute ...` from inside the client — an install from PyPI would ship
+    visibly broken methods. The guard turns that into the NotImplementedError
+    the base class documents."""
+
+    @pytest.mark.parametrize(
+        "client_method,call",
+        [
+            ("get_drep_info", lambda c: c.drep_info(DRep.decode(DREP_ID))),
+            ("get_committee_info", lambda c: c.committee_state()),
+            ("get_drep_voting_power_history", lambda c: c.drep_stake_distribution()),
+            ("get_pool_voting_power_history", lambda c: c.spo_stake_distribution()),
+            ("get_proposal_list", lambda c: c.gov_actions_all()),
+        ],
+    )
+    def test_missing_endpoint_raises_not_implemented(
+        self, chain_context, client_method, call
+    ):
+        # Simulate a client that does not wrap the endpoint.
+        with patch.object(type(chain_context.api), client_method, None, create=True):
+            with pytest.raises(NotImplementedError) as exc:
+                call(chain_context)
+        assert "Koios" in str(exc.value)
+        assert client_method in str(exc.value)

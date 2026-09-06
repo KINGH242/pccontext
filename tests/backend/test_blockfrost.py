@@ -911,3 +911,13 @@ class TestEra:
         context.api.network_eras.side_effect = _api_error(500)
         with pytest.raises(BlockfrostError):
             _ = context.era
+
+
+def test_missing_committee_endpoint_degrades(context):
+    """blockfrost-python 0.7.0 wraps no committee endpoint. Without the guard
+    this would surface as an AttributeError from inside the client."""
+    context.api.governance_committee = None
+    with pytest.raises(NotImplementedError) as exc:
+        context.committee_state()
+    assert "Blockfrost" in str(exc.value)
+    assert "governance_committee" in str(exc.value)

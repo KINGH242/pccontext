@@ -56,7 +56,7 @@ from pycardano.transaction import (
 from pycardano.types import JsonDict
 
 from pccontext.backend import ChainContext
-from pccontext.enums import DRepStatus, Network, PoolStatus
+from pccontext.enums import DRepStatus, Era, Network, PoolStatus
 from pccontext.exceptions import BlockfrostError, PoolMetadataError
 from pccontext.models import (
     ChainTip,
@@ -283,6 +283,36 @@ class BlockFrostChainContext(ChainContext):
             block=block.height,
             epoch=block.epoch,
         )
+
+    @property
+    def era(self) -> Optional[Era]:
+        """The era the chain is currently in.
+
+        Blockfrost's ``/network/eras`` returns one summary per era in
+        chronological order but does not name them, so the era is the last
+        summary's position in the fixed Byron→Conway sequence. This is the same
+        derivation the Ogmios client uses for its own era query, and unlike a
+        hardcoded epoch table it holds on every network: a testnet that began in
+        a later era still reports the earlier eras as zero-length summaries.
+
+        Returns:
+            Optional[Era]: The current era, or ``None`` if Blockfrost reports no
+            eras or more eras than this library knows about — the latter meaning
+            a hard fork has added one.
+
+        Raises:
+            :class:`BlockfrostError`: When the era summaries cannot be fetched.
+        """
+        try:
+            eras = self.api.network_eras()
+        except ApiError as e:
+            raise BlockfrostError(f"Failed to fetch the network eras. {e}") from e
+
+        known = list(Era)
+        index = len(eras) - 1
+        if index < 0 or index >= len(known):
+            return None
+        return known[index]
 
     @property
     def genesis_param(self) -> GenesisParameters:

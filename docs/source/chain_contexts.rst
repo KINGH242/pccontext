@@ -342,7 +342,7 @@ Which backend answers what
    * - ``era``
      - yes
      - yes
-     - \-
+     - yes
      - yes
      - via wrapped
      - \-
@@ -463,10 +463,9 @@ Which backend answers what
 ``cardano-cli`` answers all fifteen because it talks straight to a node socket.
 
 Blockfrost covers most of Conway governance since ``blockfrost-python`` 0.7.0,
-which added the DRep and proposal endpoints. Two gaps remain: 0.7.0 wraps no
-committee endpoint even though the Blockfrost API has ``/governance/committee``,
-and ``/network/eras`` returns era boundaries without naming the eras, so the
-current era cannot be identified from it.
+which added the DRep and proposal endpoints. One gap remains: 0.7.0 wraps no
+committee endpoint even though the Blockfrost API has
+``/governance/committee``.
 
 Koios and Ogmios stop earlier, and in both cases the limit is the client
 library rather than the service. ``koios-python`` 2.0.0 wraps none of Koios'

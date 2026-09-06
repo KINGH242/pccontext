@@ -19,7 +19,7 @@ from pycardano import (
 from pycardano.network import Network as PyCardanoNetwork
 
 from pccontext.backend.blockfrost import BlockFrostChainContext
-from pccontext.enums import DRepStatus, GovActionStatus, Network, PoolStatus
+from pccontext.enums import DRepStatus, Era, GovActionStatus, Network, PoolStatus
 from pccontext.exceptions import BlockfrostError, PoolMetadataError
 
 POOL_ID = "pool1escyjl60l930fswu54xvamlrn7r0r4chje5qp8uwku09j7x68x6"
@@ -769,12 +769,44 @@ def test_unimplemented_queries_raise(context):
 
     `blockfrost-python` 0.7.0 wraps the DRep and proposal endpoints but no
     committee endpoint, even though the Blockfrost API has
-    ``/governance/committee``. And ``/network/eras`` returns era boundaries
-    without naming the eras, so the current era cannot be identified from it.
+    ``/governance/committee``.
     """
-    with pytest.raises(NotImplementedError):
-        _ = context.era
     with pytest.raises(NotImplementedError):
         context.committee_member_info()
     with pytest.raises(NotImplementedError):
         context.committee_state()
+
+
+class TestEra:
+    """`/network/eras` returns one summary per era in order but names none of
+    them, so the era is the last summary's position in the Byron->Conway
+    sequence — the same derivation the Ogmios client uses."""
+
+    @pytest.mark.parametrize(
+        "count,expected",
+        [
+            (1, Era.BYRON),
+            (2, Era.SHELLEY),
+            (5, Era.ALONZO),
+            (6, Era.BABBAGE),
+            (7, Era.CONWAY),
+        ],
+    )
+    def test_era_from_summary_count(self, context, count, expected):
+        context.api.network_eras.return_value = [_ns({}) for _ in range(count)]
+        assert context.era == expected
+
+    def test_no_eras_reported(self, context):
+        context.api.network_eras.return_value = []
+        assert context.era is None
+
+    def test_unknown_future_era(self, context):
+        """A hard fork adding an era this library does not know about must not
+        be silently reported as Conway."""
+        context.api.network_eras.return_value = [_ns({}) for _ in range(8)]
+        assert context.era is None
+
+    def test_api_failure_is_wrapped(self, context):
+        context.api.network_eras.side_effect = _api_error(500)
+        with pytest.raises(BlockfrostError):
+            _ = context.era

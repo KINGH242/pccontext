@@ -14,6 +14,7 @@ __all__ = [
     "BinaryExecutableError",
     "TransactionError",
     "UnsupportedNetworkError",
+    "PoolMetadataError",
 ]
 
 
@@ -148,4 +149,21 @@ class UnsupportedNetworkError(Exception):
 
     def __init__(self, network: str):
         self.message = f"Unsupported network: {network}"
+        super().__init__(self.message)
+
+
+class PoolMetadataError(Exception):
+    """
+    Exception raised when a stake pool's off-chain metadata cannot be fetched
+    or does not match the hash registered on-chain.
+
+    Only raised by ``stake_pool_info(..., strict=True)``; the default,
+    non-strict call tolerates metadata problems so the on-chain parameters can
+    still be returned.
+
+    :param message: explanation of the error
+    """
+
+    def __init__(self, message="Pool metadata could not be verified."):
+        self.message = message
         super().__init__(self.message)

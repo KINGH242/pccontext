@@ -1,23 +1,52 @@
+import copy
+import hashlib
 import json
+from decimal import Decimal
+from fractions import Fraction
 
 import pytest
 from pycardano import (
+    Address,
+    CommitteeColdCredential,
+    CommitteeHotCredential,
     DatumHash,
+    DRep,
+    DRepKind,
     ExecutionUnits,
+    GovActionId,
+    HardForkInitiationAction,
+    InfoAction,
     MultiAsset,
+    NewConstitution,
+    NoConfidence,
+    ParameterChangeAction,
     PlutusData,
     PlutusV2Script,
     RawPlutusData,
     Redeemer,
     RedeemerTag,
+    ScriptHash,
     Transaction,
     TransactionBody,
+    TransactionId,
     TransactionInput,
     TransactionWitnessSet,
+    TreasuryWithdrawalsAction,
+    VerificationKeyHash,
+    Vote,
 )
 from pycardano.exception import CardanoCliError, TransactionFailedException
+from requests import RequestException
 
 from pccontext import CardanoCliChainContext
+from pccontext.backend import cardano_cli
+from pccontext.enums import (
+    CommitteeMemberStatus,
+    DRepStatus,
+    Era,
+    GovActionStatus,
+    PoolStatus,
+)
 from pccontext.exceptions import CardanoCLIError
 from pccontext.models import GenesisParameters, ProtocolParameters
 
@@ -374,3 +403,851 @@ class TestCardanoCliChainContext:
 
         with pytest.raises(TransactionFailedException, match="TxOutRefNotFound"):
             chain_context.evaluate_tx_cbor(cbor)
+
+
+POOL_HASH = "dd0b5f0c8db566f23b3ac2ffd63c4b5ea2afe1d2ca7c9810b1827e2f"
+POOL_ID = "pool1m5947rydk4n0ywe6ctlav0ztt632lcwjef7fsy93sflz7ctcx6z"
+OTHER_POOL_HASH = "0f292fcaa02b8b2f9b3c8f9fd8e0bb21abedb692a6d5058df3ef2735"
+OTHER_POOL_ID = "pool1pu5jlj4q9w9jlxeu370a3c9myx47md5j5m2str0naunn2q3lkdy"
+OWNER_HASH = "89218aeaab042f371399f159a08168b43a23f7c3b3db5c3a4c77a18e"
+VRF_HASH = "adbafc4eae2ee532f0f0dc47e502debbfd1436bd16abfafe24e2af6db4bd149d"
+METADATA_URL = "https://meta.example.com/pool.json"
+METADATA_BODY = b'{"name":"Test Pool","ticker":"TEST"}'
+METADATA_HASH = hashlib.blake2b(METADATA_BODY, digest_size=32).hexdigest()
+
+DREP_KEY_HASH = "b02f7b335aebf284bbdc20bdc3b59e4e183ae2cfc47ad2d8bc19a241"
+DREP_SCRIPT_HASH = "5a5ba42f130741d62384c390cfc84d9ceecc8a4bef38059ff18ba74b"
+ANCHOR_HASH = "35aeb21ba4be07cf9fda041b635f107ef978238b3fccae9be1b571518ce9d1b7"
+COLD_SCRIPT_HASH = "13493790d9b03483a1e1e684ea4faf1ee48a58f402574e7f2246f4d4"
+HOT_KEY_HASH = "68bb0b4276021f82364056aa9f4d38ba5ac59b26c166cbeaa9408746"
+RETURN_ADDR_HASH = "9139e5c0a42f0f2389634c3dd18dc621f5594c5ba825d9a8883c6627"
+WITHDRAWAL_HASH = "b02f7b335aebf284bbdc20bdc3b59e4e183ae2cfc47ad2d8bc19a241"
+ACTION_TX_ID = "2dd15e0ef6e6a17841cb9541c27724072ce4d4b79b91e58432fbaa32d9572531"
+
+GOV_ACTION_ID = GovActionId(
+    transaction_id=TransactionId(bytes.fromhex(ACTION_TX_ID)),
+    gov_action_index=1,
+)
+
+POOL_STATE = {
+    POOL_HASH: {
+        "futurePoolParams": None,
+        "poolParams": {
+            "spsCost": 340000000,
+            "spsDeposit": 500000000,
+            "spsMargin": 0.05,
+            "spsMetadata": {"hash": METADATA_HASH, "url": METADATA_URL},
+            "spsOwners": [OWNER_HASH],
+            "spsPledge": 10000000000,
+            "spsRelays": [
+                {
+                    "single host address": {
+                        "IPv4": "1.2.3.4",
+                        "IPv6": None,
+                        "port": 3001,
+                    }
+                },
+                {
+                    "single host name": {
+                        "dnsName": "relay1.example.com",
+                        "port": 3002,
+                    }
+                },
+            ],
+            "spsRewardAccount": {
+                "credential": {"keyHash": OWNER_HASH},
+                "network": "Testnet",
+            },
+            "spsVrf": VRF_HASH,
+        },
+        "retiring": None,
+    }
+}
+
+STAKE_SNAPSHOT = {
+    "pools": {
+        POOL_HASH: {
+            "stakeMark": 5000000000000,
+            "stakeSet": 4900000000000,
+            "stakeGo": 4800000000000,
+        }
+    },
+    "total": {
+        "stakeMark": 25000000000000000,
+        "stakeSet": 24900000000000000,
+        "stakeGo": 24800000000000000,
+    },
+}
+
+PROTOCOL_STATE = {
+    "epochNonce": "de" * 32,
+    "lastSlot": 123456789,
+    "oCertCounters": {POOL_HASH: 7},
+}
+
+COMMITTEE_STATE = {
+    "committee": {
+        f"scriptHash-{COLD_SCRIPT_HASH}": {
+            "expiration": 653,
+            "hotCredsAuthStatus": {
+                "contents": {"keyHash": HOT_KEY_HASH},
+                "tag": "MemberAuthorized",
+            },
+            "nextEpochChange": {"tag": "NoChangeExpected"},
+            "status": "Active",
+        }
+    },
+    "epoch": 623,
+    "threshold": {"denominator": 3, "numerator": 2},
+}
+
+GOV_STATE = {
+    "proposals": [
+        {
+            "actionId": {"txId": ACTION_TX_ID, "govActionIx": 1},
+            "proposedIn": 90,
+            "expiresAfter": 120,
+            "committeeVotes": {f"keyHash-{HOT_KEY_HASH}": "VoteYes"},
+            "dRepVotes": {f"keyHash-{DREP_KEY_HASH}": "Abstain"},
+            "stakePoolVotes": {f"keyHash-{OTHER_POOL_HASH}": "VoteNo"},
+            "proposalProcedure": {
+                "deposit": 100000000000,
+                "returnAddr": {
+                    "credential": {"keyHash": RETURN_ADDR_HASH},
+                    "network": "Testnet",
+                },
+                "anchor": {"url": "https://anchor.test", "dataHash": ANCHOR_HASH},
+                "govAction": {
+                    "tag": "TreasuryWithdrawals",
+                    "contents": [
+                        [[{"keyHash": WITHDRAWAL_HASH}, 20000000]],
+                        None,
+                    ],
+                },
+            },
+        }
+    ],
+    "nextRatifyState": {"enactedGovActions": [], "expiredGovActions": []},
+}
+
+
+def _stub_cli(chain_context, responses):
+    """Answer the cli from `responses`, keyed by a token of the command."""
+    commands = []
+    original = chain_context._run_command
+
+    def run(cmd):
+        commands.append(cmd)
+        for marker, output in responses.items():
+            if marker in cmd:
+                if isinstance(output, Exception):
+                    raise output
+                return output if isinstance(output, str) else json.dumps(output)
+        return original(cmd)
+
+    chain_context._run_command = run
+    return commands
+
+
+class _FakeResponse:
+    """The slice of `requests.Response` the metadata check touches."""
+
+    def __init__(self, content: bytes, error=None):
+        self.content = content
+        self._error = error
+
+    def raise_for_status(self):
+        if self._error is not None:
+            raise self._error
+
+
+class TestCardanoCliChainState:
+    def test_chain_tip(self, chain_context):
+        tip = chain_context.chain_tip
+
+        assert tip.slot == 41008115
+        assert tip.block == 1460093
+        assert (
+            tip.hash
+            == "c1bda7b2975dd3bf9969a57d92528ba7d60383b6e1c4a37b68379c4f4330e790"
+        )
+        assert tip.epoch == 98
+        assert tip.era == Era.BABBAGE
+        assert tip.sync_progress == 100.0
+
+    def test_utxo_resolves_a_live_input(self, chain_context):
+        tx_in = TransactionInput.from_primitive(
+            ["fbaa018740241abb935240051134914389c3f94647d8bd6c30cb32d3fdb799bf", 0]
+        )
+        _stub_cli(
+            chain_context,
+            {
+                "--tx-in": {
+                    "fbaa018740241abb935240051134914389c3f94647d8bd6c30cb32d3fdb799bf#0": {
+                        "address": "addr1v9p0rc57dzkz7gg97dmsns8hngsuxl956xe6myjldaug7hse4elc6",
+                        "datum": None,
+                        "inlineDatum": None,
+                        "referenceScript": None,
+                        "value": {"lovelace": 708864940},
+                    }
+                }
+            },
+        )
+
+        result = chain_context.utxo(tx_in)
+
+        assert result is not None
+        utxo, is_spent = result
+        assert utxo.input == tx_in
+        assert utxo.output.amount.coin == 708864940
+        # A node only holds the live set, so anything it returns is unspent.
+        assert is_spent is False
+
+    def test_utxo_returns_none_when_absent(self, chain_context):
+        _stub_cli(chain_context, {"--tx-in": {}})
+
+        assert (
+            chain_context.utxo(
+                TransactionInput.from_primitive(["aa" * 32, 3]),
+            )
+            is None
+        )
+
+    def test_utxo_rejects_unparseable_output(self, chain_context):
+        _stub_cli(chain_context, {"--tx-in": "cardano-cli: not json"})
+
+        with pytest.raises(CardanoCLIError):
+            chain_context.utxo(TransactionInput.from_primitive(["aa" * 32, 0]))
+
+
+class TestCardanoCliStakePools:
+    def test_stake_pools(self, chain_context):
+        _stub_cli(chain_context, {"stake-pools": f"{POOL_ID}\n{OTHER_POOL_ID}\n"})
+
+        pools = chain_context.stake_pools()
+
+        assert [pool.encode() for pool in pools] == [POOL_ID, OTHER_POOL_ID]
+
+    def test_stake_pools_accepts_json_output(self, chain_context):
+        _stub_cli(chain_context, {"stake-pools": [POOL_ID]})
+
+        assert [pool.encode() for pool in chain_context.stake_pools()] == [POOL_ID]
+
+    def test_stake_pools_rejects_an_undecodable_id(self, chain_context):
+        _stub_cli(chain_context, {"stake-pools": "not-a-pool-id\n"})
+
+        with pytest.raises(CardanoCLIError):
+            chain_context.stake_pools()
+
+    def test_stake_pool_info(self, chain_context):
+        commands = _stub_cli(
+            chain_context,
+            {
+                "pool-state": POOL_STATE,
+                "stake-snapshot": STAKE_SNAPSHOT,
+                "protocol-state": PROTOCOL_STATE,
+            },
+        )
+
+        info = chain_context.stake_pool_info(POOL_ID)
+
+        assert info.pool_params is not None
+        assert info.pool_params.operator.payload.hex() == POOL_HASH
+        assert info.pool_params.pledge == 10000000000
+        assert info.pool_params.cost == 340000000
+        assert info.pool_params.margin == Fraction(1, 20)
+        assert info.pool_params.vrf_keyhash.payload.hex() == VRF_HASH
+        # Testnet key-hash reward accounts carry the 0xE0 header byte.
+        assert info.pool_params.reward_account.payload.hex() == f"e0{OWNER_HASH}"
+        assert [owner.payload.hex() for owner in info.pool_params.pool_owners] == [
+            OWNER_HASH
+        ]
+        assert info.pool_params.relays is not None
+        assert info.pool_params.relays[0].ipv4 == "1.2.3.4"
+        assert info.pool_params.relays[0].port == 3001
+        assert info.pool_params.relays[1].dns_name == "relay1.example.com"
+        assert info.pool_params.pool_metadata is not None
+        assert info.pool_params.pool_metadata.url == METADATA_URL
+        assert (
+            info.pool_params.pool_metadata.pool_metadata_hash.payload.hex()
+            == METADATA_HASH
+        )
+
+        assert info.active_stake == 4900000000000
+        assert info.active_size == Decimal(4900000000000) / Decimal(24900000000000000)
+        assert info.opcert_counter == 7
+        assert info.status == PoolStatus.REGISTERED
+        assert info.retiring_epoch is None
+        # The node reports snapshots, never a live figure.
+        assert info.live_stake is None
+        assert info.live_pledge is None
+
+        pool_state_command = next(cmd for cmd in commands if "pool-state" in cmd)
+        assert pool_state_command[:4] == [
+            "query",
+            "pool-state",
+            "--stake-pool-id",
+            POOL_ID,
+        ]
+
+    def test_stake_pool_info_reports_a_retiring_pool(self, chain_context):
+        pool_state = copy.deepcopy(POOL_STATE)
+        pool_state[POOL_HASH]["retiring"] = 512
+        _stub_cli(
+            chain_context,
+            {
+                "pool-state": pool_state,
+                "stake-snapshot": STAKE_SNAPSHOT,
+                "protocol-state": PROTOCOL_STATE,
+            },
+        )
+
+        info = chain_context.stake_pool_info(POOL_ID)
+
+        assert info.status == PoolStatus.RETIRING
+        assert info.retiring_epoch == 512
+
+    def test_stake_pool_info_rejects_an_unregistered_pool(self, chain_context):
+        _stub_cli(chain_context, {"pool-state": {}})
+
+        with pytest.raises(CardanoCLIError, match="not registered"):
+            chain_context.stake_pool_info(POOL_ID)
+
+    def test_stake_pool_info_strict_verifies_the_metadata_hash(
+        self, chain_context, monkeypatch
+    ):
+        fetched = []
+
+        def fake_get(url, timeout=None):
+            fetched.append((url, timeout))
+            return _FakeResponse(METADATA_BODY)
+
+        monkeypatch.setattr(cardano_cli.requests, "get", fake_get)
+        _stub_cli(
+            chain_context,
+            {
+                "pool-state": POOL_STATE,
+                "stake-snapshot": STAKE_SNAPSHOT,
+                "protocol-state": PROTOCOL_STATE,
+            },
+        )
+
+        info = chain_context.stake_pool_info(POOL_ID, strict=True)
+
+        assert fetched and fetched[0][0] == METADATA_URL
+        assert info.pool_params is not None
+        assert info.pool_params.pool_metadata is not None
+
+    def test_stake_pool_info_strict_rejects_a_hash_mismatch(
+        self, chain_context, monkeypatch
+    ):
+        monkeypatch.setattr(
+            cardano_cli.requests,
+            "get",
+            lambda url, timeout=None: _FakeResponse(b"something else"),
+        )
+        _stub_cli(
+            chain_context,
+            {
+                "pool-state": POOL_STATE,
+                "stake-snapshot": STAKE_SNAPSHOT,
+                "protocol-state": PROTOCOL_STATE,
+            },
+        )
+
+        with pytest.raises(CardanoCLIError, match="registered on-chain"):
+            chain_context.stake_pool_info(POOL_ID, strict=True)
+
+    def test_stake_pool_info_tolerates_metadata_problems_when_lenient(
+        self, chain_context, monkeypatch
+    ):
+        def fail(url, timeout=None):
+            raise RequestException("connection refused")
+
+        monkeypatch.setattr(cardano_cli.requests, "get", fail)
+        _stub_cli(
+            chain_context,
+            {
+                "pool-state": POOL_STATE,
+                "stake-snapshot": STAKE_SNAPSHOT,
+                "protocol-state": PROTOCOL_STATE,
+            },
+        )
+
+        info = chain_context.stake_pool_info(POOL_ID)
+
+        assert info.pool_params is not None
+        assert info.pool_params.pool_metadata is not None
+        assert info.pool_params.pool_metadata.url == METADATA_URL
+
+    def test_stake_pool_info_strict_rejects_an_unreachable_url(
+        self, chain_context, monkeypatch
+    ):
+        def fail(url, timeout=None):
+            raise RequestException("connection refused")
+
+        monkeypatch.setattr(cardano_cli.requests, "get", fail)
+        _stub_cli(
+            chain_context,
+            {
+                "pool-state": POOL_STATE,
+                "stake-snapshot": STAKE_SNAPSHOT,
+                "protocol-state": PROTOCOL_STATE,
+            },
+        )
+
+        with pytest.raises(CardanoCLIError, match="Unable to fetch"):
+            chain_context.stake_pool_info(POOL_ID, strict=True)
+
+
+class TestCardanoCliKesPeriodInfo:
+    kes_output = """✓ The operational certificate counter agrees with the node protocol state counter
+{
+    "qKesCurrentKesPeriod": 404,
+    "qKesEndKesInterval": 465,
+    "qKesKesKeyExpiry": "2026-02-01T00:00:00Z",
+    "qKesNodeStateOperationalCertificateNumber": 6,
+    "qKesOnDiskOperationalCertificateNumber": 7,
+    "qKesRemainingSlotsInKesPeriod": 3000,
+    "qKesStartKesInterval": 336
+}"""
+
+    def test_kes_period_info(self, chain_context):
+        commands = _stub_cli(chain_context, {"kes-period-info": self.kes_output})
+
+        info = chain_context.kes_period_info(op_cert=b"\xaa\xbb")
+
+        assert info.on_chain_op_cert_count == 6
+        assert info.on_disk_op_cert_count == 7
+        # No expected counter in this output, so it is the on-chain one plus one.
+        assert info.next_chain_op_cert_count == 7
+        assert info.on_disk_kes_start == 336
+
+        command = next(cmd for cmd in commands if "kes-period-info" in cmd)
+        assert "--op-cert-file" in command
+
+    def test_kes_period_info_uses_the_expected_counter(self, chain_context):
+        _stub_cli(
+            chain_context,
+            {
+                "kes-period-info": {
+                    "qKesNodeStateOperationalCertificateNumber": 6,
+                    "qKesOnDiskOperationalCertificateNumber": 7,
+                    "qKesExpectedOperationalCertificateNumber": 8,
+                    "qKesStartKesInterval": 336,
+                }
+            },
+        )
+
+        assert (
+            chain_context.kes_period_info(op_cert="aabb").next_chain_op_cert_count == 8
+        )
+
+    def test_kes_period_info_needs_an_operational_certificate(self, chain_context):
+        with pytest.raises(CardanoCLIError, match="op_cert"):
+            chain_context.kes_period_info()
+
+
+class TestCardanoCliTreasury:
+    def test_treasury(self, chain_context):
+        _stub_cli(chain_context, {"treasury": "1000000000000000\n"})
+
+        assert chain_context.treasury() == 1000000000000000
+
+    def test_treasury_accepts_json_output(self, chain_context):
+        _stub_cli(chain_context, {"treasury": {"lovelace": 42}})
+
+        assert chain_context.treasury() == 42
+
+    def test_treasury_rejects_unparseable_output(self, chain_context):
+        _stub_cli(chain_context, {"treasury": "no balance here"})
+
+        with pytest.raises(CardanoCLIError):
+            chain_context.treasury()
+
+
+class TestCardanoCliGovernance:
+    def test_drep_info(self, chain_context):
+        commands = _stub_cli(
+            chain_context,
+            {
+                "drep-state": [
+                    [
+                        {"keyHash": DREP_KEY_HASH},
+                        {
+                            "anchor": {
+                                "dataHash": ANCHOR_HASH,
+                                "url": "https://anchor.test",
+                            },
+                            "deposit": 500000000,
+                            "expiry": 639,
+                            "stake": 305554989074,
+                        },
+                    ]
+                ]
+            },
+        )
+        drep = DRep(
+            kind=DRepKind.VERIFICATION_KEY_HASH,
+            credential=VerificationKeyHash(bytes.fromhex(DREP_KEY_HASH)),
+        )
+
+        info = chain_context.drep_info(drep)
+
+        assert info.drep == drep
+        assert info.active is True
+        assert info.status == DRepStatus.REGISTERED
+        assert info.deposit == 500000000
+        assert info.expiry == 639
+        assert info.stake == 305554989074
+        assert info.anchor is not None
+        assert info.anchor.url == "https://anchor.test"
+        assert info.anchor.data_hash.payload.hex() == ANCHOR_HASH
+
+        command = next(cmd for cmd in commands if "drep-state" in cmd)
+        assert command[2:4] == ["--drep-key-hash", DREP_KEY_HASH]
+
+    def test_drep_info_queries_a_script_drep_by_script_hash(self, chain_context):
+        commands = _stub_cli(chain_context, {"drep-state": []})
+        drep = DRep(
+            kind=DRepKind.SCRIPT_HASH,
+            credential=ScriptHash(bytes.fromhex(DREP_SCRIPT_HASH)),
+        )
+
+        info = chain_context.drep_info(drep)
+
+        assert info.status == DRepStatus.NOT_REGISTERED
+        assert info.active is False
+        assert info.stake == 0
+
+        command = next(cmd for cmd in commands if "drep-state" in cmd)
+        assert command[2:4] == ["--drep-script-hash", DREP_SCRIPT_HASH]
+
+    def test_drep_info_reads_a_predefined_drep_from_the_distribution(
+        self, chain_context
+    ):
+        _stub_cli(
+            chain_context,
+            {
+                "drep-stake-distribution": {
+                    "drep-alwaysAbstain": 8784205971620742,
+                    "drep-alwaysNoConfidence": 194879536262091,
+                }
+            },
+        )
+
+        info = chain_context.drep_info(DRep(kind=DRepKind.ALWAYS_ABSTAIN))
+
+        assert info.stake == 8784205971620742
+        assert info.status == DRepStatus.REGISTERED
+
+    def test_drep_stake_distribution(self, chain_context):
+        _stub_cli(
+            chain_context,
+            {
+                "drep-stake-distribution": {
+                    "drep-alwaysAbstain": 8784205971620742,
+                    f"drep-keyHash-{DREP_KEY_HASH}": 12121160278,
+                    f"drep-scriptHash-{DREP_SCRIPT_HASH}": 194458026737,
+                    "drep-nonsense": 1,
+                }
+            },
+        )
+
+        entries = chain_context.drep_stake_distribution()
+
+        assert len(entries) == 3
+        by_stake = {entry.stake: entry.drep for entry in entries}
+        assert by_stake[8784205971620742] == DRep(kind=DRepKind.ALWAYS_ABSTAIN)
+        assert by_stake[12121160278] == DRep(
+            kind=DRepKind.VERIFICATION_KEY_HASH,
+            credential=VerificationKeyHash(bytes.fromhex(DREP_KEY_HASH)),
+        )
+        assert by_stake[194458026737] == DRep(
+            kind=DRepKind.SCRIPT_HASH,
+            credential=ScriptHash(bytes.fromhex(DREP_SCRIPT_HASH)),
+        )
+
+    def test_spo_stake_distribution(self, chain_context):
+        _stub_cli(
+            chain_context,
+            {
+                "spo-stake-distribution": {
+                    f"keyHash-{POOL_HASH}": 1234567890,
+                    OTHER_POOL_HASH: 9876543210,
+                }
+            },
+        )
+
+        entries = chain_context.spo_stake_distribution()
+
+        assert {(entry.pool_id, entry.stake) for entry in entries} == {
+            (POOL_ID, 1234567890),
+            (OTHER_POOL_ID, 9876543210),
+        }
+
+    def test_spo_stake_distribution_accepts_pair_output(self, chain_context):
+        _stub_cli(
+            chain_context,
+            {"spo-stake-distribution": [[f"keyHash-{POOL_HASH}", 5]]},
+        )
+
+        entries = chain_context.spo_stake_distribution()
+
+        assert [(entry.pool_id, entry.stake) for entry in entries] == [(POOL_ID, 5)]
+
+    def test_gov_action_info(self, chain_context):
+        _stub_cli(chain_context, {"gov-state": GOV_STATE})
+
+        info = chain_context.gov_action_info(GOV_ACTION_ID)
+
+        assert info.gov_action_id == GOV_ACTION_ID
+        assert info.proposed_in == 90
+        assert info.expires_after == 120
+        assert info.status is None
+        assert isinstance(info.gov_action, TreasuryWithdrawalsAction)
+        assert dict(info.gov_action.withdrawals) == {
+            bytes.fromhex(f"e0{WITHDRAWAL_HASH}"): 20000000
+        }
+
+    def test_gov_action_info_reports_a_ratified_action(self, chain_context):
+        gov_state = copy.deepcopy(GOV_STATE)
+        gov_state["nextRatifyState"]["enactedGovActions"] = [
+            {"actionId": {"txId": ACTION_TX_ID, "govActionIx": 1}}
+        ]
+        _stub_cli(chain_context, {"gov-state": gov_state})
+
+        info = chain_context.gov_action_info(GOV_ACTION_ID)
+
+        assert info.ratified_epoch == 98
+        assert info.status == GovActionStatus.RATIFIED
+
+    def test_gov_action_info_reports_an_action_that_left_the_proposal_set(
+        self, chain_context
+    ):
+        _stub_cli(chain_context, {"gov-state": {"proposals": []}})
+
+        info = chain_context.gov_action_info(GOV_ACTION_ID)
+
+        assert info.status == GovActionStatus.DROPPED
+        assert info.dropped_epoch == 98
+        # The node no longer says what was proposed; do not invent it.
+        assert info.gov_action is None
+
+    def test_gov_action_votes(self, chain_context):
+        _stub_cli(chain_context, {"gov-state": GOV_STATE})
+
+        votes = chain_context.gov_action_votes(GOV_ACTION_ID)
+
+        assert votes.gov_action_id == GOV_ACTION_ID
+        assert votes.deposit == 100000000000
+        assert votes.deposit_return_addr == str(
+            Address.from_primitive(bytes.fromhex(f"e0{RETURN_ADDR_HASH}"))
+        )
+        assert votes.anchor is not None
+        assert votes.anchor.url == "https://anchor.test"
+
+        assert len(votes.committee_votes) == 1
+        assert votes.committee_votes[0].vote == Vote.YES
+        assert votes.committee_votes[0].voter == CommitteeHotCredential(
+            VerificationKeyHash(bytes.fromhex(HOT_KEY_HASH))
+        )
+
+        assert len(votes.drep_votes) == 1
+        assert votes.drep_votes[0].vote == Vote.ABSTAIN
+        assert votes.drep_votes[0].voter == DRep(
+            kind=DRepKind.VERIFICATION_KEY_HASH,
+            credential=VerificationKeyHash(bytes.fromhex(DREP_KEY_HASH)),
+        )
+
+        assert len(votes.stake_pool_votes) == 1
+        assert votes.stake_pool_votes[0].vote == Vote.NO
+        assert votes.stake_pool_votes[0].voter == OTHER_POOL_ID
+
+    def test_gov_action_votes_rejects_an_unknown_action(self, chain_context):
+        _stub_cli(chain_context, {"gov-state": {"proposals": []}})
+
+        with pytest.raises(CardanoCLIError, match="not found in gov-state"):
+            chain_context.gov_action_votes(GOV_ACTION_ID)
+
+    def test_gov_actions_all(self, chain_context):
+        _stub_cli(chain_context, {"gov-state": GOV_STATE})
+
+        actions = chain_context.gov_actions_all()
+
+        assert len(actions) == 1
+        assert actions[0].gov_action_id == GOV_ACTION_ID
+
+    def test_gov_actions_all_is_empty_when_nothing_is_proposed(self, chain_context):
+        _stub_cli(chain_context, {"gov-state": {"proposals": []}})
+
+        assert chain_context.gov_actions_all() == []
+
+    def test_gov_action_votes_dates_an_expiry_the_node_has_not_processed(
+        self, chain_context
+    ):
+        gov_state = copy.deepcopy(GOV_STATE)
+        gov_state["proposals"][0]["expiresAfter"] = 97
+        _stub_cli(chain_context, {"gov-state": gov_state})
+
+        votes = chain_context.gov_action_votes(GOV_ACTION_ID)
+
+        assert votes.expired_epoch == 98
+        assert votes.status == GovActionStatus.EXPIRED
+
+    def test_parse_gov_action_variants(self, chain_context):
+        parse = chain_context._parse_gov_action
+
+        assert isinstance(parse({"tag": "InfoAction", "contents": []}), InfoAction)
+
+        no_confidence = parse(
+            {
+                "tag": "NoConfidence",
+                "contents": [{"txId": ACTION_TX_ID, "govActionIx": 1}],
+            }
+        )
+        assert isinstance(no_confidence, NoConfidence)
+        assert no_confidence.gov_action_id == GOV_ACTION_ID
+
+        hard_fork = parse(
+            {
+                "tag": "HardForkInitiation",
+                "contents": [None, {"major": 10, "minor": 1}],
+            }
+        )
+        assert isinstance(hard_fork, HardForkInitiationAction)
+        assert tuple(hard_fork.protocol_version) == (10, 1)
+
+        constitution = parse(
+            {
+                "tag": "NewConstitution",
+                "contents": [
+                    None,
+                    {
+                        "anchor": {
+                            "url": "https://constitution.test",
+                            "dataHash": ANCHOR_HASH,
+                        },
+                        "script": COLD_SCRIPT_HASH,
+                    },
+                ],
+            }
+        )
+        assert isinstance(constitution, NewConstitution)
+        assert constitution.constitution[0].url == "https://constitution.test"
+        assert constitution.constitution[1] == ScriptHash(
+            bytes.fromhex(COLD_SCRIPT_HASH)
+        )
+
+        parameter_change = parse(
+            {
+                "tag": "ParameterChange",
+                "contents": [
+                    None,
+                    {
+                        "txFeePerByte": 44,
+                        "maxTxSize": 16384,
+                        "monetaryExpansion": 0.003,
+                        "maxTxExecutionUnits": {"memory": 14000000, "steps": 10**10},
+                        "executionUnitPrices": {
+                            "priceMemory": 0.0577,
+                            "priceSteps": 0.0000721,
+                        },
+                        "costModels": {"PlutusV3": [1, 2, 3]},
+                    },
+                    None,
+                ],
+            }
+        )
+        assert isinstance(parameter_change, ParameterChangeAction)
+        update = parameter_change.protocol_param_update
+        assert update.min_fee_a == 44
+        assert update.max_transaction_size == 16384
+        assert update.expansion_rate == Fraction(3, 1000)
+        assert update.max_tx_ex_units == ExecutionUnits(14000000, 10**10)
+        assert update.execution_costs is not None
+        assert update.execution_costs.mem_price == Fraction(577, 10000)
+        assert update.cost_models == {"PlutusV3": [1, 2, 3]}
+        assert update.min_pool_cost is None
+
+    def test_parse_gov_action_keeps_an_unmappable_variant_verbatim(self, chain_context):
+        # pycardano cannot hold an UpdateCommittee's member map (its committee
+        # credentials are unhashable), so the cli's own object is returned.
+        raw = {
+            "tag": "UpdateCommittee",
+            "contents": [None, [], {f"keyHash-{HOT_KEY_HASH}": 700}, [2, 3]],
+        }
+
+        assert chain_context._parse_gov_action(raw) is raw
+
+    def test_committee_member_info_by_cold_credential(self, chain_context):
+        commands = _stub_cli(chain_context, {"committee-state": COMMITTEE_STATE})
+        cold = CommitteeColdCredential(ScriptHash(bytes.fromhex(COLD_SCRIPT_HASH)))
+
+        info = chain_context.committee_member_info(cold=cold)
+
+        assert info.cold_credential == cold
+        assert info.hot_credential == CommitteeHotCredential(
+            VerificationKeyHash(bytes.fromhex(HOT_KEY_HASH))
+        )
+        assert info.expiration == 653
+        assert info.status == CommitteeMemberStatus.ACTIVE
+
+        command = next(cmd for cmd in commands if "committee-state" in cmd)
+        assert command[2:4] == ["--cold-script-hash", COLD_SCRIPT_HASH]
+
+    def test_committee_member_info_by_hot_credential(self, chain_context):
+        commands = _stub_cli(chain_context, {"committee-state": COMMITTEE_STATE})
+        hot = CommitteeHotCredential(VerificationKeyHash(bytes.fromhex(HOT_KEY_HASH)))
+
+        info = chain_context.committee_member_info(hot=hot)
+
+        assert info.cold_credential == CommitteeColdCredential(
+            ScriptHash(bytes.fromhex(COLD_SCRIPT_HASH))
+        )
+        assert info.hot_credential == hot
+
+        command = next(cmd for cmd in commands if "committee-state" in cmd)
+        assert command[2:4] == ["--hot-key-hash", HOT_KEY_HASH]
+
+    def test_committee_member_info_needs_a_credential(self, chain_context):
+        with pytest.raises(CardanoCLIError, match="cold or a hot credential"):
+            chain_context.committee_member_info()
+
+    def test_committee_member_info_rejects_an_unknown_member(self, chain_context):
+        _stub_cli(chain_context, {"committee-state": {"committee": {}}})
+
+        with pytest.raises(CardanoCLIError, match="No committee member matches"):
+            chain_context.committee_member_info(
+                cold=CommitteeColdCredential(
+                    ScriptHash(bytes.fromhex(COLD_SCRIPT_HASH))
+                )
+            )
+
+    def test_committee_state(self, chain_context):
+        _stub_cli(chain_context, {"committee-state": COMMITTEE_STATE})
+
+        state = chain_context.committee_state()
+
+        assert state.threshold == pytest.approx(2 / 3)
+        assert len(state.members) == 1
+        member = state.members[0]
+        assert member.cold_credential == CommitteeColdCredential(
+            ScriptHash(bytes.fromhex(COLD_SCRIPT_HASH))
+        )
+        assert member.hot_credential == CommitteeHotCredential(
+            VerificationKeyHash(bytes.fromhex(HOT_KEY_HASH))
+        )
+        assert member.expiration == 653
+        assert member.status == CommitteeMemberStatus.ACTIVE
+
+    def test_committee_state_reports_an_unauthorized_member(self, chain_context):
+        payload = copy.deepcopy(COMMITTEE_STATE)
+        payload["committee"][f"scriptHash-{COLD_SCRIPT_HASH}"]["hotCredsAuthStatus"] = {
+            "tag": "MemberNotAuthorized"
+        }
+        _stub_cli(chain_context, {"committee-state": payload})
+
+        state = chain_context.committee_state()
+
+        assert state.members[0].hot_credential is None

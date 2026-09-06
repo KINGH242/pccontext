@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -33,7 +35,9 @@ class KESPeriodInfo(BaseModel):
             "aliases": [
                 "on_chain_op_cert_count",
                 "onChainOpCertCount",
-                "qKesOnDiskOperationalCertificateNumber",
+                # Not qKesOnDiskOperationalCertificateNumber: that is the
+                # on-disk counter and belongs to the field below. Listing it
+                # here too made the mapping depend on field declaration order.
                 "qKesNodeStateOperationalCertificateNumber",
             ]
         },

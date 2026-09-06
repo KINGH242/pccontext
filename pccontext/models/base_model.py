@@ -93,7 +93,15 @@ class BaseModel:
             cls.clean_unwanted_fields(init_args)
 
             init_args[field_name] = v
-        return cls(**init_args)
+
+        # Backends return more than any one model needs — Koios' chain tip
+        # carries epoch_slot and block_time, for instance. Drop what this model
+        # has no field for rather than raising: these payloads are shaped by the
+        # service, not by us, and a new key appearing upstream should not break
+        # parsing. Aliases are resolved above, so anything left here is genuinely
+        # unmapped.
+        known = set(cls.__dataclass_fields__)
+        return cls(**{k: v for k, v in init_args.items() if k in known})
 
     def to_dict(self) -> Dict:
         """

@@ -324,6 +324,151 @@ what the service behind it can answer:
    * - ``spo_stake_distribution()``
      - Stake behind each pool this epoch.
 
+Which backend answers what
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 11 9 11 9 8 8 9
+
+   * - Query
+     - cardano-cli
+     - Koios
+     - Blockfrost
+     - Ogmios
+     - Kupo
+     - Yaci
+     - Offline
+   * - ``era``
+     - yes
+     - yes
+     - \-
+     - yes
+     - via wrapped
+     - \-
+     - yes
+   * - ``chain_tip``
+     - yes
+     - yes
+     - yes
+     - yes
+     - via wrapped
+     - \-
+     - \-
+   * - ``utxo``
+     - yes
+     - yes
+     - yes
+     - yes
+     - via wrapped
+     - \-
+     - \-
+   * - ``stake_pools``
+     - yes
+     - yes
+     - yes
+     - yes
+     - via wrapped
+     - \-
+     - \-
+   * - ``stake_pool_info``
+     - yes
+     - yes
+     - yes
+     - yes
+     - via wrapped
+     - \-
+     - \-
+   * - ``kes_period_info``
+     - yes
+     - yes
+     - yes
+     - \-
+     - via wrapped
+     - \-
+     - \-
+   * - ``treasury``
+     - yes
+     - yes
+     - yes
+     - yes
+     - via wrapped
+     - \-
+     - \-
+   * - ``drep_info``
+     - yes
+     - \-
+     - \-
+     - \-
+     - via wrapped
+     - \-
+     - \-
+   * - ``gov_action_info``
+     - yes
+     - \-
+     - \-
+     - \-
+     - via wrapped
+     - \-
+     - \-
+   * - ``gov_action_votes``
+     - yes
+     - \-
+     - \-
+     - \-
+     - via wrapped
+     - \-
+     - \-
+   * - ``gov_actions_all``
+     - yes
+     - \-
+     - \-
+     - \-
+     - via wrapped
+     - \-
+     - \-
+   * - ``committee_member_info``
+     - yes
+     - \-
+     - \-
+     - yes
+     - via wrapped
+     - \-
+     - \-
+   * - ``committee_state``
+     - yes
+     - \-
+     - \-
+     - yes
+     - via wrapped
+     - \-
+     - \-
+   * - ``drep_stake_distribution``
+     - yes
+     - \-
+     - \-
+     - \-
+     - via wrapped
+     - \-
+     - \-
+   * - ``spo_stake_distribution``
+     - yes
+     - \-
+     - yes
+     - yes
+     - via wrapped
+     - \-
+     - \-
+
+``cardano-cli`` answers all fifteen because it talks straight to a node socket.
+The hosted APIs stop short of Conway governance for the same reason in each
+case: the services expose those endpoints, but the Python SDKs this library
+depends on — ``koios-python`` 2.0.0 and ``blockfrost-python`` 0.6.0 — wrap none
+of them, and the installed ``ogmios`` client has no binding for
+``governanceProposals``, ``delegateRepresentatives`` or
+``operationalCertificates``. Kupo delegates everything to the context it wraps,
+so its row is whatever that backend supports.
+
 Because unsupported queries raise rather than return ``None``, code that must
 work across backends should either catch :class:`NotImplementedError` or pick a
 backend it knows can answer:

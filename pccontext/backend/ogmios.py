@@ -1,11 +1,15 @@
 import time
+from decimal import Decimal
 from fractions import Fraction
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+import ogmios.model.model_map as mm
+import ogmios.model.ogmios_model as om
 from cachetools import Cache, LRUCache, TTLCache, func
 from ogmios.client import Client as OgmiosClient
 from ogmios.datatypes import Address as OgmiosAddress
 from ogmios.datatypes import Era as OgmiosEra
+from ogmios.datatypes import Origin as OgmiosOrigin
 from ogmios.datatypes import ProtocolParameters as OgmiosProtocolParameters
 from ogmios.datatypes import Tip as OgmiosTip
 from ogmios.datatypes import TxOutputReference as OgmiosTxOutputReference
@@ -13,13 +17,30 @@ from ogmios.datatypes import Utxo as OgmiosUtxo
 from ogmios.utils import GenesisParameters as OgmiosGenesisParameters
 from ogmios.utils import get_current_era
 from pycardano.backend.base import ProtocolParameters as PyCardanoProtocolParameters
-from pycardano.hash import DatumHash, ScriptHash
+from pycardano.governance import CommitteeColdCredential, CommitteeHotCredential
+from pycardano.hash import (
+    DatumHash,
+    PoolMetadataHash,
+    RewardAccountHash,
+    ScriptHash,
+    VerificationKeyHash,
+    VrfKeyHash,
+)
 from pycardano.network import Network
 from pycardano.plutus import (
     ExecutionUnits,
     PlutusV1Script,
     PlutusV2Script,
     PlutusV3Script,
+)
+from pycardano.pool_params import (
+    MultiHostName,
+    PoolMetadata,
+    PoolOperator,
+    PoolParams,
+    Relay,
+    SingleHostAddr,
+    SingleHostName,
 )
 from pycardano.serialization import RawCBOR
 from pycardano.transaction import (
@@ -35,7 +56,18 @@ from pycardano.transaction import (
 
 from pccontext.backend import ChainContext
 from pccontext.backend.kupo import KupoChainContextExtension
-from pccontext.models import GenesisParameters, ProtocolParameters, StakeAddressInfo
+from pccontext.enums import CommitteeMemberStatus, Era, PoolStatus
+from pccontext.exceptions import OgmiosError
+from pccontext.models import (
+    ChainTip,
+    CommitteeMemberInfo,
+    CommitteeStateInfo,
+    GenesisParameters,
+    ProtocolParameters,
+    SPOStakeEntry,
+    StakeAddressInfo,
+    StakePoolInfo,
+)
 
 ALONZO_COINS_PER_UTXO_WORD = 34482
 DEFAULT_REFETCH_INTERVAL = 1000
@@ -103,6 +135,47 @@ class OgmiosChainContext(ChainContext):
         with OgmiosClient(self.host, self.port, self.secure) as client:
             tip, _ = client.query_network_tip.execute()
             return tip
+
+    def _query_block_height(self) -> Optional[int]:
+        with OgmiosClient(self.host, self.port, self.secure) as client:
+            block_height, _ = client.query_block_height.execute()
+            if isinstance(block_height, OgmiosOrigin):
+                return 0
+            return block_height
+
+    def _query_stake_pools(
+        self, pool_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        with OgmiosClient(self.host, self.port, self.secure) as client:
+            if pool_ids:
+                stake_pools, _ = client.query_stake_pools.execute(pool_ids)
+                return stake_pools
+            # ``QueryStakePools.execute`` always sends a ``stakePools`` filter, and
+            # an empty filter selects no pool at all. Ogmios returns every
+            # registered pool only when the parameter is left out entirely, so
+            # send the bare request and let the library parse the response.
+            payload = om.QueryLedgerStateStakePools(
+                jsonrpc=client.rpc_version,
+                method=mm.Method.queryLedgerState_stakePools.value,
+            )
+            client.send(payload.json(exclude_none=True))
+            stake_pools, _ = client.query_stake_pools.receive()
+            return stake_pools
+
+    def _query_rewards_provenance(self) -> Dict[str, Any]:
+        with OgmiosClient(self.host, self.port, self.secure) as client:
+            provenance, _ = client.query_rewards_provenance.execute()
+            return provenance
+
+    def _query_treasury_and_reserves(self) -> Tuple[int, int]:
+        with OgmiosClient(self.host, self.port, self.secure) as client:
+            treasury, reserves, _ = client.query_treasury_and_reserves.execute()
+            return treasury.lovelace, reserves.lovelace
+
+    def _query_constitutional_committee(self) -> Dict[str, Any]:
+        with OgmiosClient(self.host, self.port, self.secure) as client:
+            committee, _ = client.query_constitutional_committee.execute()
+            return committee
 
     def _query_utxos_by_address(self, address: Address) -> List[OgmiosUtxo]:
         with OgmiosClient(self.host, self.port, self.secure) as client:
@@ -496,6 +569,346 @@ class OgmiosChainContext(ChainContext):
                 )
                 for result in result
             ]
+
+    # -- Chain state ------------------------------------------------------
+
+    @property
+    def era(self) -> Optional[Era]:
+        """The era the chain is currently in.
+
+        Derived from ``queryLedgerState/eraSummaries``: the last summary
+        describes the era the chain is in now.
+
+        Returns:
+            Optional[Era]: The current era, or ``None`` when Ogmios names an era
+            this library does not know about.
+        """
+        try:
+            return Era(self._query_current_era().value)
+        except ValueError:
+            return None
+
+    @property
+    def chain_tip(self) -> ChainTip:
+        """The current tip of the chain.
+
+        The slot and block hash come from ``queryNetwork/tip``, the height from
+        ``queryNetwork/blockHeight``, the epoch from ``queryLedgerState/epoch``
+        and the era from ``queryLedgerState/eraSummaries``. Ogmios's JSON-RPC
+        interface reports no synchronisation percentage — that lives on the
+        server's HTTP ``/health`` endpoint — so
+        :attr:`~pccontext.models.ChainTip.sync_progress` is always ``None``.
+
+        Returns:
+            ChainTip: The slot, block hash, height, epoch and era of the tip.
+        """
+        tip: Any = self._query_chain_tip()
+
+        if isinstance(tip, OgmiosOrigin):
+            slot: Optional[int] = 0
+            block_hash: Optional[str] = None
+        else:
+            slot = tip.slot
+            block_hash = tip.id
+
+        return ChainTip(
+            slot=slot,
+            hash=block_hash,
+            block=self._query_block_height(),
+            epoch=self._query_current_epoch(),
+            era=self.era,
+        )
+
+    def utxo(self, tx_input: TransactionInput) -> Optional[Tuple[UTxO, bool]]:
+        """Resolve a single UTxO by the transaction input that identifies it.
+
+        Args:
+            tx_input (TransactionInput): The transaction hash and output index.
+
+        Returns:
+            Optional[Tuple[UTxO, bool]]: The UTxO and ``False``, because
+            ``queryLedgerState/utxo`` only sees the live UTxO set: anything it
+            returns is unspent. A spent output is indistinguishable from one
+            that never existed, and both give ``None``.
+        """
+        utxos = self._query_utxos_by_tx_id(str(tx_input.transaction_id), tx_input.index)
+        if not utxos:
+            return None
+        return self._utxo_from_ogmios_result(utxos[0]), False
+
+    # -- Stake pools ------------------------------------------------------
+
+    def stake_pools(self) -> List[PoolOperator]:
+        """Get every stake pool registered on the chain.
+
+        Backed by ``queryLedgerState/stakePools`` with no filter, which returns
+        the currently registered and active pools.
+
+        Returns:
+            List[PoolOperator]: The registered pools.
+        """
+        return [
+            PoolOperator.from_primitive(pool_id)
+            for pool_id in self._query_stake_pools()
+        ]
+
+    def stake_pool_info(self, pool_id: str, strict: bool = False) -> StakePoolInfo:
+        """Get a stake pool's registered parameters and stake figures.
+
+        The registered parameters come from ``queryLedgerState/stakePools``, and
+        the stake figures from ``queryLedgerState/rewardsProvenance``, which
+        reports the epoch's stake snapshot per pool. A pool that
+        ``queryLedgerState/stakePools`` returns is registered, so
+        :attr:`~pccontext.models.StakePoolInfo.status` is always
+        ``PoolStatus.REGISTERED``; Ogmios reports no retirement epoch, and the
+        installed ``ogmios`` client exposes no operational certificate query, so
+        ``retiring_epoch`` and ``opcert_counter`` stay ``None``.
+
+        Args:
+            pool_id (str): The pool's ID, bech32 encoded.
+            strict (bool): Ignored. Ogmios never fetches a pool's off-chain
+                metadata, so the registered URL and hash are reported as they
+                stand on chain and no hash can be verified.
+
+        Returns:
+            StakePoolInfo: The pool's information.
+
+        Raises:
+            OgmiosError: If the pool is not registered, or a relay it registered
+                has a shape this backend does not recognise.
+        """
+        params = self._query_stake_pools([pool_id]).get(pool_id)
+        if params is None:
+            raise OgmiosError(f"Stake pool not found: {pool_id}")
+
+        active_stake: Optional[int] = None
+        active_size: Optional[Decimal] = None
+        owner_stake: Optional[int] = None
+
+        # Rewards provenance is a heavier query than the pool parameters and is
+        # unavailable on a node that has not yet reached a rewards snapshot.
+        # Report the registered parameters without stake figures in that case
+        # rather than failing the whole call.
+        try:
+            provenance = self._query_rewards_provenance()
+        except Exception:
+            provenance = {}
+
+        summary = provenance.get("stakePools", {}).get(pool_id)
+        if summary is not None:
+            active_stake = summary["stake"]["ada"]["lovelace"]
+            owner_stake = summary["ownerStake"]["ada"]["lovelace"]
+            total_stake = provenance["activeStakeInEpoch"]["ada"]["lovelace"]
+            if total_stake:
+                active_size = Decimal(active_stake) / Decimal(total_stake)
+
+        return StakePoolInfo(
+            pool_params=self._pool_params_from_ogmios(pool_id, params),
+            live_pledge=owner_stake,
+            active_stake=active_stake,
+            active_size=active_size,
+            status=PoolStatus.REGISTERED,
+        )
+
+    # -- Treasury ---------------------------------------------------------
+
+    def treasury(self) -> int:
+        """Get the current treasury balance, in lovelace.
+
+        Backed by ``queryLedgerState/treasuryAndReserves``.
+
+        Returns:
+            int: The treasury balance, in lovelace.
+        """
+        treasury, _reserves = self._query_treasury_and_reserves()
+        return treasury
+
+    # -- Governance -------------------------------------------------------
+
+    def committee_member_info(
+        self,
+        cold: Optional[CommitteeColdCredential] = None,
+        hot: Optional[CommitteeHotCredential] = None,
+    ) -> CommitteeMemberInfo:
+        """Get a constitutional committee member's authorization and term.
+
+        Backed by ``queryLedgerState/constitutionalCommittee``, whose members
+        are matched on the given credential.
+
+        Args:
+            cold (Optional[CommitteeColdCredential]): The member's cold
+                credential. Optional if ``hot`` is given.
+            hot (Optional[CommitteeHotCredential]): A hot credential the member
+                has authorized. Optional if ``cold`` is given.
+
+        Returns:
+            CommitteeMemberInfo: The member's information.
+
+        Raises:
+            OgmiosError: If neither credential is given, if no member matches,
+                or if a member carries a credential origin this backend does not
+                recognise.
+        """
+        if cold is None and hot is None:
+            raise OgmiosError(
+                "Either a cold or a hot committee credential must be given."
+            )
+
+        for raw_member in self._query_constitutional_committee().get("members", []):
+            member = self._committee_member_from_ogmios(raw_member)
+            if cold is not None and member.cold_credential != cold:
+                continue
+            if hot is not None and member.hot_credential != hot:
+                continue
+            return member
+
+        raise OgmiosError(
+            f"Committee member not found for credential: {cold if cold else hot}"
+        )
+
+    def committee_state(self) -> CommitteeStateInfo:
+        """Get the full constitutional committee state.
+
+        Backed by ``queryLedgerState/constitutionalCommittee``.
+
+        Returns:
+            CommitteeStateInfo: Every member with its cold-to-hot authorization
+            and term expiration, plus the quorum threshold. The threshold is
+            ``None`` when Ogmios reports none, which is how a committee defined
+            in the Conway genesis file can appear.
+
+        Raises:
+            OgmiosError: If a member carries a credential origin this backend
+                does not recognise.
+        """
+        committee = self._query_constitutional_committee()
+        return CommitteeStateInfo(
+            members=[
+                self._committee_member_from_ogmios(member)
+                for member in committee.get("members", [])
+            ],
+            threshold=self._ratio_to_float(committee.get("quorum")),
+        )
+
+    # -- Stake distributions ----------------------------------------------
+
+    def spo_stake_distribution(self) -> List[SPOStakeEntry]:
+        """Get the stake delegated to each stake pool this epoch.
+
+        Backed by ``queryLedgerState/rewardsProvenance``, which reports each
+        pool's stake for the ongoing epoch in lovelace.
+        ``queryLedgerState/liveStakeDistribution`` is not used here: it reports
+        each pool's share as a ratio of the total, not an amount.
+
+        Returns:
+            List[SPOStakeEntry]: One entry per pool.
+        """
+        stake_pools = self._query_rewards_provenance().get("stakePools", {})
+        return [
+            SPOStakeEntry(pool_id=pool_id, stake=summary["stake"]["ada"]["lovelace"])
+            for pool_id, summary in stake_pools.items()
+        ]
+
+    # -- Parsing helpers --------------------------------------------------
+
+    @staticmethod
+    def _ratio_to_float(ratio: Optional[str]) -> Optional[float]:
+        """Convert an Ogmios ``"numerator/denominator"`` ratio to a float."""
+        if not ratio:
+            return None
+        return float(Fraction(ratio))
+
+    @staticmethod
+    def _relay_from_ogmios(relay: Dict[str, Any]) -> Relay:
+        """Convert an Ogmios relay entry to a PyCardano relay."""
+        relay_type = relay.get("type")
+        if relay_type == "ipAddress":
+            return SingleHostAddr(
+                port=relay.get("port"),
+                ipv4=relay.get("ipv4"),
+                ipv6=relay.get("ipv6"),
+            )
+        if relay_type == "hostname":
+            # Ogmios collapses both name-based relays onto one shape. The SRV
+            # record of a multi-host relay is the one without a port.
+            if relay.get("port") is None:
+                return MultiHostName(dns_name=relay.get("hostname"))
+            return SingleHostName(
+                port=relay.get("port"), dns_name=relay.get("hostname")
+            )
+        raise OgmiosError(f"Unknown stake pool relay type: {relay_type}")
+
+    @classmethod
+    def _pool_params_from_ogmios(
+        cls, pool_id: str, params: Dict[str, Any]
+    ) -> PoolParams:
+        """Convert an Ogmios stake pool entry to PyCardano pool parameters."""
+        metadata = params.get("metadata")
+        pool_metadata = (
+            PoolMetadata(
+                url=metadata["url"],
+                pool_metadata_hash=PoolMetadataHash(bytes.fromhex(metadata["hash"])),
+            )
+            if metadata
+            else None
+        )
+        reward_account = Address.from_primitive(params["rewardAccount"])
+
+        return PoolParams(
+            operator=PoolOperator.from_primitive(pool_id).pool_key_hash,
+            vrf_keyhash=VrfKeyHash(bytes.fromhex(params["vrfVerificationKeyHash"])),
+            pledge=params["pledge"]["ada"]["lovelace"],
+            cost=params["cost"]["ada"]["lovelace"],
+            margin=Fraction(params["margin"]),
+            reward_account=RewardAccountHash(bytes(reward_account.to_primitive())),
+            pool_owners=[
+                VerificationKeyHash(bytes.fromhex(owner))
+                for owner in params.get("owners", [])
+            ],
+            relays=[
+                cls._relay_from_ogmios(relay) for relay in params.get("relays", [])
+            ],
+            pool_metadata=pool_metadata,
+        )
+
+    @staticmethod
+    def _credential_payload(
+        entry: Dict[str, Any],
+    ) -> Union[ScriptHash, VerificationKeyHash]:
+        """Build a credential hash from an Ogmios ``{id, from}`` pair."""
+        origin = entry.get("from")
+        payload = bytes.fromhex(entry["id"])
+        if origin == "script":
+            return ScriptHash(payload)
+        if origin == "verificationKey":
+            return VerificationKeyHash(payload)
+        raise OgmiosError(f"Unknown committee credential origin: {origin}")
+
+    @classmethod
+    def _committee_member_from_ogmios(
+        cls, member: Dict[str, Any]
+    ) -> CommitteeMemberInfo:
+        """Convert an Ogmios constitutional committee member entry."""
+        cold_credential = CommitteeColdCredential(
+            credential=cls._credential_payload(member)
+        )
+
+        delegate = member.get("delegate") or {}
+        hot_credential = (
+            CommitteeHotCredential(credential=cls._credential_payload(delegate))
+            if delegate.get("status") == "authorized"
+            else None
+        )
+
+        status = member.get("status")
+        mandate = member.get("mandate") or {}
+
+        return CommitteeMemberInfo(
+            cold_credential=cold_credential,
+            hot_credential=hot_credential,
+            expiration=mandate.get("epoch"),
+            status=CommitteeMemberStatus(status) if status else None,
+        )
 
 
 def KupoOgmiosV6ChainContext(

@@ -214,3 +214,34 @@ class TestEnumSerialization:
     def test_new_status_enums_serialize_by_value(self):
         info = StakePoolInfo(status=PoolStatus.RETIRING, retiring_epoch=1)
         assert '"retiring"' in info.to_json()
+
+
+class TestKesAliasesAreUnambiguous:
+    """cardano-cli reports the on-chain and on-disk counters under two similar
+    keys. Aliasing both onto one field made the mapping depend on field
+    declaration order, so the two must stay disjoint."""
+
+    CLI_OUTPUT = {
+        "qKesNodeStateOperationalCertificateNumber": 29,
+        "qKesOnDiskOperationalCertificateNumber": 30,
+        "qKesExpectedOperationalCertificateNumber": 30,
+        "qKesStartKesInterval": 700,
+        "qKesCurrentKesPeriod": 745,
+    }
+
+    def test_counters_do_not_cross(self):
+        info = KESPeriodInfo.from_json(self.CLI_OUTPUT)
+        assert info.on_chain_op_cert_count == 29
+        assert info.on_disk_op_cert_count == 30
+        assert info.next_chain_op_cert_count == 30
+        assert info.on_disk_kes_start == 700
+
+    def test_alias_sets_are_disjoint(self):
+        fields = KESPeriodInfo.__dataclass_fields__
+        seen = {}
+        for name, f in fields.items():
+            for alias in f.metadata.get("aliases", []):
+                assert (
+                    alias not in seen
+                ), f"alias {alias!r} maps to both {seen[alias]!r} and {name!r}"
+                seen[alias] = name

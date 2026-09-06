@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -18,7 +20,8 @@ class ChainTip(BaseModel):
     """
 
     slot: Optional[int] = field(
-        default=None, metadata={"aliases": ["slot", "slot_no", "slotNo", "absSlot"]}
+        default=None,
+        metadata={"aliases": ["slot", "slot_no", "slotNo", "abs_slot", "absSlot"]},
     )
     hash: Optional[str] = field(
         default=None,

@@ -1,19 +1,47 @@
 from datetime import datetime
+from decimal import Decimal
 from fractions import Fraction
 from unittest.mock import patch
 
+import pytest
 from ogmios.statequery import (
+    QueryBlockHeight,
+    QueryConstitutionalCommittee,
+    QueryEpoch,
     QueryEraSummaries,
     QueryGenesisConfiguration,
     QueryNetworkTip,
     QueryProtocolParameters,
+    QueryRewardsProvenance,
+    QueryStakePools,
+    QueryTreasuryAndReserves,
     QueryUtxo,
 )
-from pycardano import Address, TransactionOutput
+from pycardano import (
+    Address,
+    CommitteeColdCredential,
+    CommitteeHotCredential,
+    DRep,
+    DRepKind,
+    GovActionId,
+    MultiHostName,
+    PoolMetadata,
+    PoolMetadataHash,
+    PoolOperator,
+    RewardAccountHash,
+    ScriptHash,
+    SingleHostAddr,
+    SingleHostName,
+    TransactionId,
+    TransactionOutput,
+    VerificationKeyHash,
+)
 from pycardano.transaction import MultiAsset, TransactionInput, Value
 
-from pccontext.backend.ogmios import ALONZO_COINS_PER_UTXO_WORD
-from pccontext.models import GenesisParameters
+from pccontext.backend.ogmios import ALONZO_COINS_PER_UTXO_WORD, OgmiosChainContext
+from pccontext.enums import CommitteeMemberStatus, Era, PoolStatus
+from pccontext.exceptions import OgmiosError
+from pccontext.models import GenesisParameters, SPOStakeEntry
 
 
 class TestOgmiosChainContext:
@@ -359,3 +387,504 @@ class TestOgmiosChainContext:
             ),
             amount=Value(coin=9858539, multi_asset=MultiAsset()),
         )
+
+
+COMMITTEE_COLD_KEY_HASH = "cc30497f4ff962f4c1dca54cceefe39f86f1d7179668009f8eb71e59"
+COMMITTEE_HOT_SCRIPT_HASH = "1ba48f0e0a1e0a1b6b2e4a0f5c9d3e2f1a0b9c8d7e6f5a4b3c2d1e0f"
+COMMITTEE_RESIGNED_HASH = "3fb0f2a4d1c8e7b6a59483726150fedcba9876543210abcdef012345"
+
+POOL_ID = "pool1escyjl60l930fswu54xvamlrn7r0r4chje5qp8uwku09j7x68x6"
+POOL_KEY_HASH = "cc30497f4ff962f4c1dca54cceefe39f86f1d7179668009f8eb71e59"
+OTHER_POOL_ID = "pool1pu5jlj4q9w9jlxeu370a3c9myx47md5j5m2str0naunn2q3lkdy"
+REWARD_ACCOUNT = "stake_test1urxrqjtlfluk9axpmjj5enh0uw0cduwhz7txsqyl36m3ukgmd6hlp"
+
+
+@pytest.fixture
+def ogmios_stake_pool():
+    return {
+        "id": POOL_ID,
+        "vrfVerificationKeyHash": "ff" * 32,
+        "owners": [POOL_KEY_HASH],
+        "cost": {"ada": {"lovelace": 170000000}},
+        "margin": "3/100",
+        "pledge": {"ada": {"lovelace": 100000000000}},
+        "rewardAccount": REWARD_ACCOUNT,
+        "metadata": {"url": "https://example.com/pool.json", "hash": "ab" * 32},
+        "relays": [
+            {"type": "ipAddress", "ipv4": "1.2.3.4", "port": 3001},
+            {"type": "hostname", "hostname": "relay.example.com", "port": 3002},
+            {"type": "hostname", "hostname": "srv.example.com"},
+        ],
+    }
+
+
+@pytest.fixture
+def ogmios_stake_pools_response(ogmios_stake_pool):
+    return {
+        "method": "queryLedgerState/stakePools",
+        "result": {POOL_ID: ogmios_stake_pool},
+    }
+
+
+@pytest.fixture
+def ogmios_rewards_provenance_response():
+    return {
+        "method": "queryLedgerState/rewardsProvenance",
+        "result": {
+            "desiredNumberOfStakePools": 500,
+            "stakePoolPledgeInfluence": "3/10",
+            "totalRewardsInEpoch": {"ada": {"lovelace": 20000000000}},
+            "totalStakeInEpoch": {"ada": {"lovelace": 1000000000000}},
+            "activeStakeInEpoch": {"ada": {"lovelace": 800000000000}},
+            "stakePools": {
+                POOL_ID: {
+                    "id": POOL_ID,
+                    "stake": {"ada": {"lovelace": 200000000000}},
+                    "ownerStake": {"ada": {"lovelace": 100000000000}},
+                    "approximatePerformance": 1.02,
+                    "parameters": {},
+                },
+                OTHER_POOL_ID: {
+                    "id": OTHER_POOL_ID,
+                    "stake": {"ada": {"lovelace": 600000000000}},
+                    "ownerStake": {"ada": {"lovelace": 5000000000}},
+                    "approximatePerformance": 0.98,
+                    "parameters": {},
+                },
+            },
+        },
+    }
+
+
+@pytest.fixture
+def ogmios_constitutional_committee_response():
+    return {
+        "method": "queryLedgerState/constitutionalCommittee",
+        "result": {
+            "members": [
+                {
+                    "id": COMMITTEE_COLD_KEY_HASH,
+                    "from": "verificationKey",
+                    "status": "active",
+                    "mandate": {"epoch": 580},
+                    "delegate": {
+                        "status": "authorized",
+                        "id": COMMITTEE_HOT_SCRIPT_HASH,
+                        "from": "script",
+                    },
+                },
+                {
+                    "id": COMMITTEE_RESIGNED_HASH,
+                    "from": "script",
+                    "status": "expired",
+                    "mandate": {"epoch": 420},
+                    "delegate": {"status": "resigned"},
+                },
+            ],
+            "quorum": "2/3",
+        },
+    }
+
+
+@pytest.fixture
+def ogmios_treasury_response():
+    return {
+        "method": "queryLedgerState/treasuryAndReserves",
+        "result": {
+            "treasury": {"ada": {"lovelace": 1234567890}},
+            "reserves": {"ada": {"lovelace": 9876543210}},
+        },
+    }
+
+
+class TestOgmiosChainStateQueries:
+    def test_era(self, ogmios_chain_context, ogmios_era_summary):
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryEraSummaries, "execute", return_value=(ogmios_era_summary, None)
+            ),
+        ):
+            assert ogmios_chain_context.era == Era.CONWAY
+
+    def test_chain_tip(
+        self, ogmios_chain_context, ogmios_network_tip_response, ogmios_era_summary
+    ):
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryNetworkTip,
+                "execute",
+                return_value=QueryNetworkTip._parse_QueryNetworkTip_response(
+                    ogmios_network_tip_response
+                ),
+            ),
+            patch.object(
+                QueryBlockHeight,
+                "execute",
+                return_value=QueryBlockHeight._parse_QueryBlockHeight_response(
+                    {"method": "queryNetwork/blockHeight", "result": 11223344}
+                ),
+            ),
+            patch.object(
+                QueryEpoch,
+                "execute",
+                return_value=QueryEpoch._parse_QueryEpoch_response(
+                    {"method": "queryLedgerState/epoch", "result": 507}
+                ),
+            ),
+            patch.object(
+                QueryEraSummaries, "execute", return_value=(ogmios_era_summary, None)
+            ),
+        ):
+            chain_tip = ogmios_chain_context.chain_tip
+
+        assert chain_tip.slot == 137467329
+        assert (
+            chain_tip.hash
+            == "8231935154b93fc54c6f7d3f91a50ecd40860a039a7166bae68a5ed5ba719d49"
+        )
+        assert chain_tip.block == 11223344
+        assert chain_tip.epoch == 507
+        assert chain_tip.era == Era.CONWAY
+        # Ogmios reports sync progress on its HTTP health endpoint, not over
+        # JSON-RPC, so the backend leaves it unset rather than guessing.
+        assert chain_tip.sync_progress is None
+
+    def test_utxo(self, ogmios_chain_context, ogmios_utxos_response):
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryUtxo,
+                "execute",
+                return_value=QueryUtxo._parse_QueryUtxo_response(ogmios_utxos_response),
+            ),
+        ):
+            result = ogmios_chain_context.utxo(
+                TransactionInput.from_primitive(
+                    [
+                        "3a42f652bd8dee788577e8c39b6217db3df659c33b10a2814c20fb66089ca167",
+                        1,
+                    ]
+                )
+            )
+
+        assert result is not None
+        utxo, is_spent = result
+        assert utxo.input == TransactionInput.from_primitive(
+            ["3a42f652bd8dee788577e8c39b6217db3df659c33b10a2814c20fb66089ca167", 1]
+        )
+        # The live UTxO set only holds unspent outputs.
+        assert is_spent is False
+
+    def test_utxo_missing_returns_none(self, ogmios_chain_context):
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(QueryUtxo, "execute", return_value=([], None)),
+        ):
+            assert (
+                ogmios_chain_context.utxo(
+                    TransactionInput.from_primitive(
+                        [
+                            "3a42f652bd8dee788577e8c39b6217db3df659c33b10a2814c20fb66089ca167",
+                            9,
+                        ]
+                    )
+                )
+                is None
+            )
+
+
+class TestOgmiosStakePoolQueries:
+    def test_stake_pools(self, ogmios_chain_context, ogmios_stake_pools_response):
+        # The all-pools query omits the ``stakePools`` filter, so the backend
+        # sends the bare request and parses the response itself.
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryStakePools,
+                "receive",
+                return_value=QueryStakePools._parse_QueryStakePools_response(
+                    ogmios_stake_pools_response
+                ),
+            ),
+        ):
+            pools = ogmios_chain_context.stake_pools()
+
+        assert pools == [PoolOperator.from_primitive(POOL_ID)]
+
+    def test_stake_pool_info(
+        self,
+        ogmios_chain_context,
+        ogmios_stake_pools_response,
+        ogmios_rewards_provenance_response,
+    ):
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryStakePools,
+                "execute",
+                return_value=QueryStakePools._parse_QueryStakePools_response(
+                    ogmios_stake_pools_response
+                ),
+            ),
+            patch.object(
+                QueryRewardsProvenance,
+                "execute",
+                return_value=QueryRewardsProvenance._parse_QueryRewardsProvenance_response(
+                    ogmios_rewards_provenance_response
+                ),
+            ),
+        ):
+            info = ogmios_chain_context.stake_pool_info(POOL_ID)
+
+        params = info.pool_params
+        assert params is not None
+        assert params.operator == PoolOperator.from_primitive(POOL_ID).pool_key_hash
+        assert params.pledge == 100000000000
+        assert params.cost == 170000000
+        assert params.margin == Fraction(3, 100)
+        assert params.reward_account == RewardAccountHash(
+            bytes(Address.from_primitive(REWARD_ACCOUNT).to_primitive())
+        )
+        assert params.pool_owners == [VerificationKeyHash(bytes.fromhex(POOL_KEY_HASH))]
+        assert params.pool_metadata == PoolMetadata(
+            url="https://example.com/pool.json",
+            pool_metadata_hash=PoolMetadataHash(bytes.fromhex("ab" * 32)),
+        )
+        # An ipAddress relay, a hostname relay with a port and the SRV-style
+        # hostname relay without one map to the three PyCardano relay types.
+        assert params.relays == [
+            SingleHostAddr(port=3001, ipv4="1.2.3.4", ipv6=None),
+            SingleHostName(port=3002, dns_name="relay.example.com"),
+            MultiHostName(dns_name="srv.example.com"),
+        ]
+
+        assert info.status == PoolStatus.REGISTERED
+        assert info.active_stake == 200000000000
+        assert info.live_pledge == 100000000000
+        assert info.active_size == Decimal(200000000000) / Decimal(800000000000)
+        # Neither an operational certificate counter nor a retirement epoch is
+        # reachable over Ogmios.
+        assert info.opcert_counter is None
+        assert info.retiring_epoch is None
+
+    def test_stake_pool_info_without_rewards_provenance(
+        self, ogmios_chain_context, ogmios_stake_pools_response
+    ):
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryStakePools,
+                "execute",
+                return_value=QueryStakePools._parse_QueryStakePools_response(
+                    ogmios_stake_pools_response
+                ),
+            ),
+            patch.object(
+                QueryRewardsProvenance, "execute", side_effect=RuntimeError("boom")
+            ),
+        ):
+            info = ogmios_chain_context.stake_pool_info(POOL_ID)
+
+        assert info.pool_params is not None
+        assert info.active_stake is None
+        assert info.active_size is None
+        assert info.live_pledge is None
+
+    def test_stake_pool_info_not_found(self, ogmios_chain_context):
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(QueryStakePools, "execute", return_value=({}, None)),
+            pytest.raises(OgmiosError, match="Stake pool not found"),
+        ):
+            ogmios_chain_context.stake_pool_info(POOL_ID)
+
+    def test_unknown_relay_type_is_rejected(self, ogmios_chain_context):
+        with pytest.raises(OgmiosError, match="Unknown stake pool relay type"):
+            OgmiosChainContext._relay_from_ogmios({"type": "carrierPigeon"})
+
+    def test_spo_stake_distribution(
+        self, ogmios_chain_context, ogmios_rewards_provenance_response
+    ):
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryRewardsProvenance,
+                "execute",
+                return_value=QueryRewardsProvenance._parse_QueryRewardsProvenance_response(
+                    ogmios_rewards_provenance_response
+                ),
+            ),
+        ):
+            distribution = ogmios_chain_context.spo_stake_distribution()
+
+        assert distribution == [
+            SPOStakeEntry(pool_id=POOL_ID, stake=200000000000),
+            SPOStakeEntry(pool_id=OTHER_POOL_ID, stake=600000000000),
+        ]
+
+
+class TestOgmiosTreasuryAndGovernanceQueries:
+    def test_treasury(self, ogmios_chain_context, ogmios_treasury_response):
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryTreasuryAndReserves,
+                "execute",
+                return_value=QueryTreasuryAndReserves._parse_QueryTreasuryAndReserves_response(
+                    ogmios_treasury_response
+                ),
+            ),
+        ):
+            assert ogmios_chain_context.treasury() == 1234567890
+
+    def test_committee_state(
+        self, ogmios_chain_context, ogmios_constitutional_committee_response
+    ):
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryConstitutionalCommittee,
+                "execute",
+                return_value=QueryConstitutionalCommittee._parse_QueryConstitutionalCommittee_response(
+                    ogmios_constitutional_committee_response
+                ),
+            ),
+        ):
+            state = ogmios_chain_context.committee_state()
+
+        assert state.threshold == 2 / 3
+        assert len(state.members) == 2
+
+        authorized, resigned = state.members
+        assert authorized.cold_credential == CommitteeColdCredential(
+            credential=VerificationKeyHash(bytes.fromhex(COMMITTEE_COLD_KEY_HASH))
+        )
+        assert authorized.hot_credential == CommitteeHotCredential(
+            credential=ScriptHash(bytes.fromhex(COMMITTEE_HOT_SCRIPT_HASH))
+        )
+        assert authorized.expiration == 580
+        assert authorized.status == CommitteeMemberStatus.ACTIVE
+
+        assert resigned.cold_credential == CommitteeColdCredential(
+            credential=ScriptHash(bytes.fromhex(COMMITTEE_RESIGNED_HASH))
+        )
+        # A resigned member has no authorized hot credential.
+        assert resigned.hot_credential is None
+        assert resigned.status == CommitteeMemberStatus.EXPIRED
+
+    def test_committee_state_without_quorum(
+        self, ogmios_chain_context, ogmios_constitutional_committee_response
+    ):
+        ogmios_constitutional_committee_response["result"]["quorum"] = None
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryConstitutionalCommittee,
+                "execute",
+                return_value=QueryConstitutionalCommittee._parse_QueryConstitutionalCommittee_response(
+                    ogmios_constitutional_committee_response
+                ),
+            ),
+        ):
+            state = ogmios_chain_context.committee_state()
+
+        assert state.threshold is None
+
+    def test_committee_member_info_by_cold_credential(
+        self, ogmios_chain_context, ogmios_constitutional_committee_response
+    ):
+        cold = CommitteeColdCredential(
+            credential=VerificationKeyHash(bytes.fromhex(COMMITTEE_COLD_KEY_HASH))
+        )
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryConstitutionalCommittee,
+                "execute",
+                return_value=QueryConstitutionalCommittee._parse_QueryConstitutionalCommittee_response(
+                    ogmios_constitutional_committee_response
+                ),
+            ),
+        ):
+            member = ogmios_chain_context.committee_member_info(cold=cold)
+
+        assert member.cold_credential == cold
+        assert member.expiration == 580
+
+    def test_committee_member_info_by_hot_credential(
+        self, ogmios_chain_context, ogmios_constitutional_committee_response
+    ):
+        hot = CommitteeHotCredential(
+            credential=ScriptHash(bytes.fromhex(COMMITTEE_HOT_SCRIPT_HASH))
+        )
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryConstitutionalCommittee,
+                "execute",
+                return_value=QueryConstitutionalCommittee._parse_QueryConstitutionalCommittee_response(
+                    ogmios_constitutional_committee_response
+                ),
+            ),
+        ):
+            member = ogmios_chain_context.committee_member_info(hot=hot)
+
+        assert member.hot_credential == hot
+        assert member.cold_credential == CommitteeColdCredential(
+            credential=VerificationKeyHash(bytes.fromhex(COMMITTEE_COLD_KEY_HASH))
+        )
+
+    def test_committee_member_info_requires_a_credential(self, ogmios_chain_context):
+        with pytest.raises(OgmiosError, match="cold or a hot committee credential"):
+            ogmios_chain_context.committee_member_info()
+
+    def test_committee_member_info_not_found(
+        self, ogmios_chain_context, ogmios_constitutional_committee_response
+    ):
+        with (
+            patch("ogmios.client.connect"),
+            patch.object(
+                QueryConstitutionalCommittee,
+                "execute",
+                return_value=QueryConstitutionalCommittee._parse_QueryConstitutionalCommittee_response(
+                    ogmios_constitutional_committee_response
+                ),
+            ),
+            pytest.raises(OgmiosError, match="Committee member not found"),
+        ):
+            ogmios_chain_context.committee_member_info(
+                cold=CommitteeColdCredential(
+                    credential=VerificationKeyHash(bytes.fromhex("11" * 28))
+                )
+            )
+
+
+class TestOgmiosUnsupportedQueries:
+    """Queries Ogmios v6, as exposed by the installed client, cannot answer."""
+
+    def test_kes_period_info_is_not_implemented(self, ogmios_chain_context):
+        with pytest.raises(NotImplementedError):
+            ogmios_chain_context.kes_period_info(
+                pool=PoolOperator.from_primitive(POOL_ID)
+            )
+
+    def test_drep_queries_are_not_implemented(self, ogmios_chain_context):
+        with pytest.raises(NotImplementedError):
+            ogmios_chain_context.drep_info(DRep(DRepKind.ALWAYS_ABSTAIN))
+        with pytest.raises(NotImplementedError):
+            ogmios_chain_context.drep_stake_distribution()
+
+    def test_governance_proposal_queries_are_not_implemented(
+        self, ogmios_chain_context
+    ):
+        gov_action_id = GovActionId(
+            transaction_id=TransactionId(bytes.fromhex("aa" * 32)), gov_action_index=0
+        )
+        with pytest.raises(NotImplementedError):
+            ogmios_chain_context.gov_action_info(gov_action_id)
+        with pytest.raises(NotImplementedError):
+            ogmios_chain_context.gov_action_votes(gov_action_id)
+        with pytest.raises(NotImplementedError):
+            ogmios_chain_context.gov_actions_all()

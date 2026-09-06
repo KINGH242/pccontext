@@ -926,7 +926,7 @@ class OgmiosChainContext(ChainContext):
                     return DRepInfo(
                         drep=drep,
                         active=True,
-                        stake=self._lovelace(summary.get("stake")) or 0,
+                        stake=self._lovelace(summary.get("stake")),
                         status=DRepStatus.REGISTERED,
                     )
             raise OgmiosError(
@@ -1111,9 +1111,7 @@ class OgmiosChainContext(ChainContext):
             if drep is None:
                 continue
             entries.append(
-                DRepStakeEntry(
-                    drep=drep, stake=self._lovelace(summary.get("stake")) or 0
-                )
+                DRepStakeEntry(drep=drep, stake=self._lovelace(summary.get("stake")))
             )
         return entries
 
@@ -1323,7 +1321,7 @@ class OgmiosChainContext(ChainContext):
             active=expiry is None or current_epoch <= expiry,
             anchor=cls._anchor_from_ogmios(summary.get("metadata")),
             deposit=cls._lovelace(summary.get("deposit")),
-            stake=cls._lovelace(summary.get("stake")) or 0,
+            stake=cls._lovelace(summary.get("stake")),
             expiry=expiry,
             status=DRepStatus.REGISTERED,
         )

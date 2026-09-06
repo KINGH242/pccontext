@@ -20,10 +20,12 @@ class DRepStakeEntry(BaseModel):
     drep: Optional[DRep] = field(default=None)
     """The DRep the stake is delegated to."""
 
-    stake: int = field(
-        default=0, metadata={"aliases": ["stake", "amount", "votingPower"]}
+    stake: Optional[int] = field(
+        default=None, metadata={"aliases": ["stake", "amount", "votingPower"]}
     )
-    """Delegated stake, in lovelace."""
+    """Delegated stake, in lovelace, or ``None`` when the backend cannot report
+    it. ``None`` is not the same answer as ``0``; see
+    :attr:`~pccontext.models.drep_info_model.DRepInfo.stake`."""
 
 
 @dataclass(frozen=True)
@@ -38,5 +40,9 @@ class SPOStakeEntry(BaseModel):
     )
     """The pool's ID, bech32 encoded."""
 
-    stake: int = field(default=0, metadata={"aliases": ["stake", "amount"]})
-    """Delegated stake, in lovelace."""
+    stake: Optional[int] = field(
+        default=None, metadata={"aliases": ["stake", "amount"]}
+    )
+    """Delegated stake, in lovelace, or ``None`` when the backend cannot report
+    it. ``None`` is not the same answer as ``0``; see
+    :attr:`~pccontext.models.drep_info_model.DRepInfo.stake`."""

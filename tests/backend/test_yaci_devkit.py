@@ -419,8 +419,10 @@ class TestYaciDevkitDRepInfo:
             url="https://example.com/drep.json",
             data_hash=AnchorDataHash(bytes.fromhex("ff" * 32)),
         )
-        # Yaci reports no voting power; 0 is the model default, not a measurement.
-        assert info.stake == 0
+        # Yaci indexes certificates and never sees voting power, so the figure
+        # is unknown rather than zero. This is the case the optional field
+        # exists for: reporting 0 here would claim every DRep has no support.
+        assert info.stake is None
         assert info.expiry is None
 
     def test_retired_drep(self, yaci_devkit_chain_context):

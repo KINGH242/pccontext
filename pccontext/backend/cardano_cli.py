@@ -1138,10 +1138,13 @@ class CardanoCliChainContext(ChainContext):
             payload = self._query_json(
                 ["query", "drep-stake-distribution", "--all-dreps", "--output-json"]
             )
-            stake = 0
+            # --all-dreps enumerates every DRep, so a predefined DRep absent
+            # from the listing has no delegated stake. That is a measurement,
+            # not a missing figure, so it stays 0 rather than None.
+            stake: Optional[int] = 0
             for entry_key, entry_value in self._key_value_entries(payload):
                 if entry_key == key:
-                    stake = self._parse_lovelace(entry_value) or 0
+                    stake = self._parse_lovelace(entry_value)
                     break
 
             return DRepInfo(
@@ -1198,7 +1201,7 @@ class CardanoCliChainContext(ChainContext):
             active=True,
             anchor=self._parse_anchor(state.get("anchor")),
             deposit=self._parse_lovelace(state.get("deposit")),
-            stake=self._parse_lovelace(state.get("stake")) or 0,
+            stake=self._parse_lovelace(state.get("stake")),
             expiry=state.get("expiry"),
             status=DRepStatus.REGISTERED,
         )

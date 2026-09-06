@@ -246,7 +246,7 @@ def _drep_info_from_dict(value: Dict) -> DRepInfo:
         active=bool(value.get("active", False)),
         anchor=_from_cbor_hex(Anchor, value.get("anchor")),
         deposit=_as_int(value.get("deposit")),
-        stake=_as_int(value.get("stake")) or 0,
+        stake=_as_int(value.get("stake")),
         expiry=_as_int(value.get("expiry")),
         status=_enum_from(DRepStatus, value.get("status")),
     )
@@ -438,7 +438,7 @@ def _drep_stake_entry_from_dict(value: Dict) -> DRepStakeEntry:
     """Decode one row of the DRep stake distribution."""
     return DRepStakeEntry(
         drep=_from_cbor_hex(DRep, value.get("drep")),
-        stake=_as_int(value.get("stake")) or 0,
+        stake=_as_int(value.get("stake")),
     )
 
 
@@ -451,7 +451,7 @@ def _spo_stake_entry_from_dict(value: Dict) -> SPOStakeEntry:
     """Decode one row of the stake pool stake distribution."""
     return SPOStakeEntry(
         pool_id=value.get("pool_id"),
-        stake=_as_int(value.get("stake")) or 0,
+        stake=_as_int(value.get("stake")),
     )
 
 

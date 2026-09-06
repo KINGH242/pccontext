@@ -875,6 +875,16 @@ class BlockFrostChainContext(ChainContext):
     # -- Governance --------------------------------------------------------
 
     @staticmethod
+    def _as_optional_int(value: Any) -> Optional[int]:
+        """Coerce a reported amount to int, keeping "not reported" apart from zero."""
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _drep_id(drep: DRep) -> str:
         """Bech32 id Blockfrost identifies a DRep by."""
         return drep.encode()
@@ -961,7 +971,7 @@ class BlockFrostChainContext(ChainContext):
             active=bool(getattr(result, "active", False)),
             anchor=self._drep_anchor(drep_id),
             deposit=None,
-            stake=int(getattr(result, "amount", 0) or 0),
+            stake=self._as_optional_int(getattr(result, "amount", None)),
             expiry=None,
             status=self._drep_status(result),
         )
@@ -985,7 +995,7 @@ class BlockFrostChainContext(ChainContext):
         return [
             DRepStakeEntry(
                 drep=self._decode_drep(drep.drep_id),
-                stake=int(getattr(drep, "amount", 0) or 0),
+                stake=self._as_optional_int(getattr(drep, "amount", None)),
             )
             for drep in dreps
         ]

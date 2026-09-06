@@ -652,7 +652,7 @@ class KoiosChainContext(ChainContext):
             active=bool(result.get("active", False)),
             anchor=anchor,
             deposit=self._as_int(result.get("deposit")),
-            stake=self._as_int(result.get("amount")) or 0,
+            stake=self._as_int(result.get("amount")),
             expiry=self._as_int(result.get("expires_epoch_no")),
             status=self._drep_status(result.get("drep_status")),
         )
@@ -722,7 +722,7 @@ class KoiosChainContext(ChainContext):
             with contextlib.suppress(Exception):
                 drep = DRep.decode(result["drep_id"])
             entries.append(
-                DRepStakeEntry(drep=drep, stake=self._as_int(result.get("amount")) or 0)
+                DRepStakeEntry(drep=drep, stake=self._as_int(result.get("amount")))
             )
         return entries
 
@@ -749,7 +749,7 @@ class KoiosChainContext(ChainContext):
         return [
             SPOStakeEntry(
                 pool_id=result.get("pool_id_bech32"),
-                stake=self._as_int(result.get("amount")) or 0,
+                stake=self._as_int(result.get("amount")),
             )
             for result in results or []
         ]

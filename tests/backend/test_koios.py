@@ -3,15 +3,24 @@ from unittest.mock import patch
 
 import pytest
 from pycardano import (
+    DRep,
+    GovActionId,
     MultiHostName,
     Network,
     SingleHostAddr,
     SingleHostName,
     TransactionInput,
+    Vote,
 )
 
 from pccontext.backend.koios import KoiosChainContext
-from pccontext.enums import Era, PoolStatus
+from pccontext.enums import (
+    CommitteeMemberStatus,
+    DRepStatus,
+    Era,
+    GovActionStatus,
+    PoolStatus,
+)
 from pccontext.exceptions import PoolMetadataError
 
 # A real /tip response. Koios sends more keys than ChainTip models, which is
@@ -298,23 +307,326 @@ class TestTreasury:
                 chain_context.treasury()
 
 
-class TestUnsupported:
-    """Koios' governance endpoints are not wrapped by koios-python 2.0.0, so
-    these must keep raising rather than return a misleading empty result."""
+# -- Governance (koios-python fork with the Governance endpoints) ----------
+
+DREP_ID = "drep1ygqzg3ed7rdqeg3343jw0fptqzc3lqtk3rvnnmgq64rj85sxd4sr4"
+PROPOSAL_ID = "gov_action105mjyzm3spjppny2m776lwk5jnsuu07uva9tz0yg5u4nkf770rvsql5raht"
+
+COMMITTEE_INFO = {
+    "proposal_id": "gov_action1fk4nx9zhkcdcyjaudwjtnkd7gagwyhqtth2zypawkc78gvdxkuzqqtvqdkv",
+    "quorum_numerator": 2,
+    "quorum_denominator": 3,
+    "members": [
+        {
+            "status": "authorized",
+            "cc_cold_hex": "34" * 28,
+            "cc_cold_has_script": False,
+            "cc_hot_hex": "56" * 28,
+            "cc_hot_has_script": False,
+            "expiration_epoch": 726,
+        },
+        {
+            "status": "resigned",
+            "cc_cold_hex": "78" * 28,
+            "cc_cold_has_script": True,
+            "cc_hot_hex": None,
+            "cc_hot_has_script": None,
+            "expiration_epoch": 653,
+        },
+        {
+            "status": "authorized",
+            "cc_cold_hex": "9a" * 28,
+            "cc_cold_has_script": False,
+            "cc_hot_hex": "bc" * 28,
+            "cc_hot_has_script": False,
+            "expiration_epoch": 600,
+        },
+    ],
+}
+
+PROPOSAL = {
+    "proposal_id": PROPOSAL_ID,
+    "proposal_tx_hash": "7d" * 32,
+    "proposal_index": 0,
+    "proposal_type": "TreasuryWithdrawals",
+    "proposal_description": {"tag": "TreasuryWithdrawals"},
+    "deposit": "100000000000",
+    "return_address": "stake1u8453de8xhhqa9c4ftvylkke8we84tmaq5hz75qwfgaaf2qac45ja",
+    "meta_url": "https://example.com/proposal.json",
+    "meta_hash": "ab" * 32,
+    "proposed_epoch": 649,
+    "expiration": 656,
+    "ratified_epoch": None,
+    "enacted_epoch": None,
+    "dropped_epoch": None,
+    "expired_epoch": None,
+}
+
+
+class TestDRepInfo:
+    DREP_ROW = {
+        "drep_id": DREP_ID,
+        "hex": "00" * 28,
+        "has_script": False,
+        "drep_status": "registered",
+        "deposit": "500000000",
+        "active": True,
+        "expires_epoch_no": 700,
+        "amount": "11547971",
+        "meta_url": "https://example.com/drep.json",
+        "meta_hash": "cd" * 32,
+    }
+
+    def test_maps_registration_and_stake(self, chain_context):
+        with patch("koios_python.URLs.get_drep_info", return_value=[self.DREP_ROW]):
+            info = chain_context.drep_info(DRep.decode(DREP_ID))
+        assert info.status == DRepStatus.REGISTERED
+        assert info.active is True
+        assert info.stake == 11547971
+        assert info.deposit == 500000000
+        assert info.expiry == 700
+        assert info.anchor is not None
+        assert info.anchor.url == "https://example.com/drep.json"
+
+    def test_deregistered_maps_to_retired(self, chain_context):
+        row = dict(self.DREP_ROW, drep_status="deregistered", active=False, amount="0")
+        with patch("koios_python.URLs.get_drep_info", return_value=[row]):
+            info = chain_context.drep_info(DRep.decode(DREP_ID))
+        assert info.status == DRepStatus.RETIRED
+
+    def test_unknown_drep_is_not_registered(self, chain_context):
+        with patch("koios_python.URLs.get_drep_info", return_value=[]):
+            info = chain_context.drep_info(DRep.decode(DREP_ID))
+        assert info.status == DRepStatus.NOT_REGISTERED
+        assert info.stake == 0
+
+    def test_missing_metadata_yields_no_anchor(self, chain_context):
+        row = dict(self.DREP_ROW, meta_url=None, meta_hash=None)
+        with patch("koios_python.URLs.get_drep_info", return_value=[row]):
+            assert chain_context.drep_info(DRep.decode(DREP_ID)).anchor is None
+
+
+class TestCommitteeState:
+    def test_maps_members_and_threshold(self, chain_context):
+        with patch(
+            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
+        ):
+            state = chain_context.committee_state()
+        assert len(state.members) == 3
+        assert state.threshold == pytest.approx(2 / 3)
+
+    def test_status_mapping(self, chain_context):
+        """A term runs to the end of its expiration epoch, so a member whose
+        expiration equals the current epoch is still serving."""
+        with patch(
+            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
+        ):
+            members = chain_context.committee_state().members
+
+        # epoch 653: expiration 726 -> still serving
+        assert members[0].status == CommitteeMemberStatus.ACTIVE
+        # resigned, expiration == current epoch -> not a recognised voter
+        assert members[1].status == CommitteeMemberStatus.UNRECOGNIZED
+        # expiration 600 is behind the chain -> expired
+        assert members[2].status == CommitteeMemberStatus.EXPIRED
+
+    def test_member_at_its_expiration_epoch_is_still_active(self, chain_context):
+        info = dict(
+            COMMITTEE_INFO,
+            members=[dict(COMMITTEE_INFO["members"][0], expiration_epoch=653)],
+        )
+        with patch("koios_python.URLs.get_committee_info", return_value=[info]):
+            assert (
+                chain_context.committee_state().members[0].status
+                == CommitteeMemberStatus.ACTIVE
+            )
+
+    def test_script_and_key_credentials(self, chain_context):
+        with patch(
+            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
+        ):
+            members = chain_context.committee_state().members
+        assert members[0].cold_credential is not None
+        assert members[0].hot_credential is not None
+        # a resigned member has no hot credential
+        assert members[1].hot_credential is None
+
+    def test_empty_response(self, chain_context):
+        with patch("koios_python.URLs.get_committee_info", return_value=[]):
+            state = chain_context.committee_state()
+        assert state.members == []
+        assert state.threshold is None
+
+
+class TestCommitteeMemberInfo:
+    def test_lookup_by_cold_credential(self, chain_context):
+        with patch(
+            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
+        ):
+            target = chain_context.committee_state().members[0]
+            found = chain_context.committee_member_info(cold=target.cold_credential)
+        assert found.cold_credential == target.cold_credential
+
+    def test_lookup_by_hot_credential(self, chain_context):
+        with patch(
+            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
+        ):
+            target = chain_context.committee_state().members[0]
+            found = chain_context.committee_member_info(hot=target.hot_credential)
+        assert found.hot_credential == target.hot_credential
+
+    def test_requires_a_credential(self, chain_context):
+        with pytest.raises(ValueError, match="cold or hot"):
+            chain_context.committee_member_info()
+
+    def test_no_match_raises(self, chain_context):
+        from pycardano import CommitteeColdCredential, VerificationKeyHash
+
+        stranger = CommitteeColdCredential(VerificationKeyHash(b"\xff" * 28))
+        with patch(
+            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
+        ):
+            with pytest.raises(ValueError, match="No committee member matched"):
+                chain_context.committee_member_info(cold=stranger)
+
+
+class TestGovActions:
+    VOTES = [
+        {
+            "voter_role": "ConstitutionalCommittee",
+            "voter_id": "cc_hot1x",
+            "vote": "Yes",
+        },
+        {"voter_role": "DRep", "voter_id": DREP_ID, "vote": "No"},
+        {"voter_role": "SPO", "voter_id": "pool1x", "vote": "Abstain"},
+    ]
+
+    def test_gov_action_info(self, chain_context):
+        with patch("koios_python.URLs.get_proposal_list", return_value=[PROPOSAL]):
+            info = chain_context.gov_action_info(GovActionId.decode(PROPOSAL_ID))
+        assert info.proposed_in == 649
+        assert info.expires_after == 656
+        assert info.status is None
+
+    def test_gov_action_info_status_from_epochs(self, chain_context):
+        proposal = dict(PROPOSAL, ratified_epoch=650, enacted_epoch=651)
+        with patch("koios_python.URLs.get_proposal_list", return_value=[proposal]):
+            info = chain_context.gov_action_info(GovActionId.decode(PROPOSAL_ID))
+        assert info.status == GovActionStatus.ENACTED
+
+    def test_unknown_action_raises(self, chain_context):
+        with patch("koios_python.URLs.get_proposal_list", return_value=[]):
+            with pytest.raises(ValueError, match="was not found"):
+                chain_context.gov_action_info(GovActionId.decode(PROPOSAL_ID))
+
+    def test_gov_action_votes_split_by_role(self, chain_context):
+        with (
+            patch("koios_python.URLs.get_proposal_list", return_value=[PROPOSAL]),
+            patch("koios_python.URLs.get_proposal_votes", return_value=self.VOTES),
+        ):
+            votes = chain_context.gov_action_votes(GovActionId.decode(PROPOSAL_ID))
+
+        assert len(votes.committee_votes) == 1
+        assert len(votes.drep_votes) == 1
+        assert len(votes.stake_pool_votes) == 1
+        assert votes.drep_votes[0].vote == Vote.NO
+        assert votes.stake_pool_votes[0].vote == Vote.ABSTAIN
+        assert votes.deposit == 100000000000
+        assert votes.anchor is not None
+
+    def test_unknown_voter_role_is_skipped(self, chain_context):
+        with (
+            patch("koios_python.URLs.get_proposal_list", return_value=[PROPOSAL]),
+            patch(
+                "koios_python.URLs.get_proposal_votes",
+                return_value=[
+                    {"voter_role": "Martian", "voter_id": "x", "vote": "Yes"}
+                ],
+            ),
+        ):
+            votes = chain_context.gov_action_votes(GovActionId.decode(PROPOSAL_ID))
+        assert not (votes.committee_votes or votes.drep_votes or votes.stake_pool_votes)
+
+    def test_gov_actions_all(self, chain_context):
+        with (
+            patch(
+                "koios_python.URLs.get_proposal_list", return_value=[PROPOSAL, PROPOSAL]
+            ),
+            patch("koios_python.URLs.get_proposal_votes", return_value=[]),
+        ):
+            results = chain_context.gov_actions_all()
+        assert len(results) == 2
+
+
+class TestStakeDistributions:
+    def test_drep_distribution(self, chain_context):
+        rows = [
+            {"drep_id": DREP_ID, "epoch_no": 653, "amount": "500"},
+            {"drep_id": "not-a-drep", "epoch_no": 653, "amount": "250"},
+        ]
+        with patch(
+            "koios_python.URLs.get_drep_voting_power_history", return_value=rows
+        ):
+            entries = chain_context.drep_stake_distribution()
+        assert [e.stake for e in entries] == [500, 250]
+        # an unparseable id keeps its row rather than losing the stake
+        assert entries[0].drep is not None
+        assert entries[1].drep is None
+
+    def test_spo_distribution(self, chain_context):
+        rows = [{"pool_id_bech32": "pool1x", "epoch_no": 653, "amount": "4419361614"}]
+        with patch(
+            "koios_python.URLs.get_pool_voting_power_history", return_value=rows
+        ):
+            entries = chain_context.spo_stake_distribution()
+        assert entries[0].pool_id == "pool1x"
+        assert entries[0].stake == 4419361614
+
+    def test_distribution_is_paginated(self, chain_context):
+        """Koios caps a page at the requested Range and reports no total, so a
+        full page must be followed by another request. Without this the
+        distribution silently stops at 1000 entries."""
+        page1 = [{"pool_id_bech32": f"pool{i}", "amount": "1"} for i in range(1000)]
+        page2 = [{"pool_id_bech32": "pool_last", "amount": "2"}]
+        with patch(
+            "koios_python.URLs.get_pool_voting_power_history",
+            side_effect=[page1, page2],
+        ):
+            entries = chain_context.spo_stake_distribution()
+        assert len(entries) == 1001
+        assert entries[-1].pool_id == "pool_last"
+
+    def test_single_short_page_stops(self, chain_context):
+        with patch(
+            "koios_python.URLs.get_pool_voting_power_history",
+            side_effect=[[{"pool_id_bech32": "pool1x", "amount": "1"}]],
+        ):
+            assert len(chain_context.spo_stake_distribution()) == 1
+
+
+class TestUnwrappedEndpointsDegradeGracefully:
+    """Released koios-python wraps none of the governance endpoints. Calling
+    one would otherwise fail with `AttributeError: 'URLs' object has no
+    attribute ...` from inside the client — an install from PyPI would ship
+    visibly broken methods. The guard turns that into the NotImplementedError
+    the base class documents."""
 
     @pytest.mark.parametrize(
-        "method,args",
+        "client_method,call",
         [
-            ("drep_info", (None,)),
-            ("gov_action_info", (None,)),
-            ("gov_action_votes", (None,)),
-            ("gov_actions_all", ()),
-            ("committee_member_info", ()),
-            ("committee_state", ()),
-            ("drep_stake_distribution", ()),
-            ("spo_stake_distribution", ()),
+            ("get_drep_info", lambda c: c.drep_info(DRep.decode(DREP_ID))),
+            ("get_committee_info", lambda c: c.committee_state()),
+            ("get_drep_voting_power_history", lambda c: c.drep_stake_distribution()),
+            ("get_pool_voting_power_history", lambda c: c.spo_stake_distribution()),
+            ("get_proposal_list", lambda c: c.gov_actions_all()),
         ],
     )
-    def test_governance_queries_raise(self, chain_context, method, args):
-        with pytest.raises(NotImplementedError, match="Koios"):
-            getattr(chain_context, method)(*args)
+    def test_missing_endpoint_raises_not_implemented(
+        self, chain_context, client_method, call
+    ):
+        # Simulate a client that does not wrap the endpoint.
+        with patch.object(type(chain_context.api), client_method, None, create=True):
+            with pytest.raises(NotImplementedError) as exc:
+                call(chain_context)
+        assert "Koios" in str(exc.value)
+        assert client_method in str(exc.value)

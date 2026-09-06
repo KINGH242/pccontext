@@ -146,11 +146,17 @@ class TestModelDefaults:
         info = StakePoolInfo(live_size=Decimal("0.0125"))
         assert info.live_size == Decimal("0.0125")
 
-    def test_drep_info_defaults_to_inactive_with_no_stake(self):
+    def test_drep_info_defaults_to_unknown_stake(self):
+        """The default is None, not 0. A backend with no source for voting
+        power must not be made to claim it measured none."""
         info = DRepInfo()
         assert info.active is False
-        assert info.stake == 0
+        assert info.stake is None
         assert info.status is None
+
+    def test_measured_zero_is_distinct_from_unknown(self):
+        assert DRepInfo(stake=0).stake == 0
+        assert DRepInfo(stake=0).stake is not None
 
     def test_drep_status_values(self):
         assert DRepStatus("not_registered") == DRepStatus.NOT_REGISTERED
@@ -176,8 +182,13 @@ class TestModelDefaults:
         assert len(state.members) == 1
         assert state.threshold == pytest.approx(0.67)
 
-    def test_drep_stake_entry_defaults(self):
-        assert DRepStakeEntry().stake == 0
+    def test_stake_entry_defaults_to_unknown(self):
+        assert DRepStakeEntry().stake is None
+        assert SPOStakeEntry().stake is None
+
+    def test_stake_entry_keeps_a_measured_zero(self):
+        assert DRepStakeEntry(stake=0).stake == 0
+        assert SPOStakeEntry(stake=0).stake == 0
 
 
 class TestEnumSerialization:
@@ -245,3 +256,32 @@ class TestKesAliasesAreUnambiguous:
                     alias not in seen
                 ), f"alias {alias!r} maps to both {seen[alias]!r} and {name!r}"
                 seen[alias] = name
+
+
+class TestUnknownStakeSurvivesTheOfflineFile:
+    """An offline capture must preserve the difference between a measured zero
+    and a figure the capturing backend had no source for. Decoding used to
+    collapse `null` back to 0, which would turn "unknown" into a claim."""
+
+    def test_round_trip_preserves_none_zero_and_value(self):
+        import json
+
+        from pccontext.models import OfflineTransfer, SPOStakeEntry
+
+        transfer = OfflineTransfer(
+            drep_stake_entries=[
+                DRepStakeEntry(stake=None),
+                DRepStakeEntry(stake=0),
+                DRepStakeEntry(stake=5),
+            ],
+            spo_stake_entries=[SPOStakeEntry(pool_id="pool1x", stake=None)],
+            drep_infos=[DRepInfo(stake=None), DRepInfo(stake=0)],
+        )
+        back = OfflineTransfer.from_json(json.loads(transfer.to_json()))
+
+        assert back.drep_stake_entries[0].stake is None
+        assert back.drep_stake_entries[1].stake == 0
+        assert back.drep_stake_entries[2].stake == 5
+        assert back.spo_stake_entries[0].stake is None
+        assert back.drep_infos[0].stake is None
+        assert back.drep_infos[1].stake == 0

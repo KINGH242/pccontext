@@ -29,11 +29,18 @@ class DRepInfo(BaseModel):
     deposit: Optional[int] = field(default=None, metadata={"aliases": ["deposit"]})
     """The deposit held for the registration, in lovelace."""
 
-    stake: int = field(
-        default=0,
+    stake: Optional[int] = field(
+        default=None,
         metadata={"aliases": ["stake", "votingPower", "voting_power", "amount"]},
     )
-    """Stake delegated to this DRep, in lovelace."""
+    """Stake delegated to this DRep, in lovelace, or ``None`` when the backend
+    cannot report it.
+
+    ``None`` and ``0`` are different answers: ``0`` means the backend measured
+    no delegated stake, while ``None`` means it has no source for the figure at
+    all. The Yaci DevKit context is the case in point — it indexes certificates
+    and never sees voting power — so treating a missing value as zero would
+    report every DRep there as having no support."""
 
     expiry: Optional[int] = field(
         default=None, metadata={"aliases": ["expiry", "expiresAfter", "expires_after"]}

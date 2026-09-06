@@ -1,3 +1,4 @@
+import json
 import time
 from decimal import Decimal
 from fractions import Fraction
@@ -17,12 +18,21 @@ from ogmios.datatypes import Utxo as OgmiosUtxo
 from ogmios.utils import GenesisParameters as OgmiosGenesisParameters
 from ogmios.utils import get_current_era
 from pycardano.backend.base import ProtocolParameters as PyCardanoProtocolParameters
-from pycardano.governance import CommitteeColdCredential, CommitteeHotCredential
+from pycardano.certificate import DRep, DRepKind
+from pycardano.governance import (
+    Anchor,
+    CommitteeColdCredential,
+    CommitteeHotCredential,
+    GovActionId,
+    Vote,
+)
 from pycardano.hash import (
+    AnchorDataHash,
     DatumHash,
     PoolMetadataHash,
     RewardAccountHash,
     ScriptHash,
+    TransactionId,
     VerificationKeyHash,
     VrfKeyHash,
 )
@@ -56,17 +66,25 @@ from pycardano.transaction import (
 
 from pccontext.backend import ChainContext
 from pccontext.backend.kupo import KupoChainContextExtension
-from pccontext.enums import CommitteeMemberStatus, Era, PoolStatus
+from pccontext.enums import CommitteeMemberStatus, DRepStatus, Era, PoolStatus
 from pccontext.exceptions import OgmiosError
 from pccontext.models import (
     ChainTip,
     CommitteeMemberInfo,
     CommitteeStateInfo,
+    CommitteeVote,
+    DRepInfo,
+    DRepStakeEntry,
+    DRepVote,
     GenesisParameters,
+    GovActionInfo,
+    GovActionVotes,
+    KESPeriodInfo,
     ProtocolParameters,
     SPOStakeEntry,
     StakeAddressInfo,
     StakePoolInfo,
+    StakePoolVote,
 )
 
 ALONZO_COINS_PER_UTXO_WORD = 34482
@@ -176,6 +194,94 @@ class OgmiosChainContext(ChainContext):
         with OgmiosClient(self.host, self.port, self.secure) as client:
             committee, _ = client.query_constitutional_committee.execute()
             return committee
+
+    def _query_ledger_state(
+        self, method: str, params: Optional[Dict[str, Any]] = None
+    ) -> Any:
+        """Send a ledger-state query the installed ``ogmios`` client does not bind.
+
+        The client (1.4.3, the latest release) exposes no request model and no
+        ``mm.Method`` entry for ``queryLedgerState/operationalCertificates``,
+        ``queryLedgerState/delegateRepresentatives`` or
+        ``queryLedgerState/governanceProposals``, so — unlike
+        :meth:`_query_stake_pools`, which can still borrow the library's model
+        class — the JSON-RPC envelope has to be built by hand here. It is
+        deliberately the only place in this backend that does so; every mapping
+        function below reads the parsed result defensively.
+
+        The request and response shapes are those of the Ogmios v6 JSON schema
+        (``ogmios.json`` / ``cardano.json``).
+
+        Args:
+            method (str): The JSON-RPC method name.
+            params (Optional[Dict[str, Any]]): The method's parameters, omitted
+                from the request entirely when ``None``.
+
+        Returns:
+            Any: The response's ``result``, parsed from JSON.
+
+        Raises:
+            OgmiosError: If Ogmios answers with an error, answers a different
+                method, or returns no result at all.
+        """
+        with OgmiosClient(self.host, self.port, self.secure) as client:
+            rpc_version = getattr(client.rpc_version, "value", client.rpc_version)
+            request: Dict[str, Any] = {"jsonrpc": rpc_version, "method": method}
+            if params is not None:
+                request["params"] = params
+            client.send(json.dumps(request))
+            response = client.receive()
+
+        if not isinstance(response, dict):
+            raise OgmiosError(f"Malformed response to {method}: {response!r}")
+        if response.get("error"):
+            raise OgmiosError(f"Ogmios responded with an error to {method}: {response}")
+        if response.get("method") != method:
+            raise OgmiosError(f"Incorrect method for {method} response: {response}")
+        if "result" not in response:
+            raise OgmiosError(f"Failed to parse {method} response: {response}")
+        return response["result"]
+
+    def _query_operational_certificates(self) -> Dict[str, int]:
+        """Get every stake pool's operational certificate counter, by pool ID."""
+        result = self._query_ledger_state(
+            "queryLedgerState/operationalCertificates",
+        )
+        return result if isinstance(result, dict) else {}
+
+    def _query_delegate_representatives(
+        self,
+        keys: Optional[List[str]] = None,
+        scripts: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get the registered DRep summaries, optionally filtered.
+
+        Args:
+            keys (Optional[List[str]]): Verification key hashes to filter on,
+                hex encoded.
+            scripts (Optional[List[str]]): Script hashes to filter on, hex
+                encoded.
+
+        Returns:
+            List[Dict[str, Any]]: One summary per DRep. With no filter this is
+            every registered DRep plus the two predefined options; the
+            predefined options are returned whether or not a filter is given.
+        """
+        params: Optional[Dict[str, Any]] = None
+        if keys:
+            params = {"keys": keys}
+        elif scripts:
+            params = {"scripts": scripts}
+
+        result = self._query_ledger_state(
+            "queryLedgerState/delegateRepresentatives", params
+        )
+        return result if isinstance(result, list) else []
+
+    def _query_governance_proposals(self) -> List[Dict[str, Any]]:
+        """Get the currently active governance proposals with their votes."""
+        result = self._query_ledger_state("queryLedgerState/governanceProposals")
+        return result if isinstance(result, list) else []
 
     def _query_utxos_by_address(self, address: Address) -> List[OgmiosUtxo]:
         with OgmiosClient(self.host, self.port, self.secure) as client:
@@ -660,9 +766,10 @@ class OgmiosChainContext(ChainContext):
         reports the epoch's stake snapshot per pool. A pool that
         ``queryLedgerState/stakePools`` returns is registered, so
         :attr:`~pccontext.models.StakePoolInfo.status` is always
-        ``PoolStatus.REGISTERED``; Ogmios reports no retirement epoch, and the
-        installed ``ogmios`` client exposes no operational certificate query, so
-        ``retiring_epoch`` and ``opcert_counter`` stay ``None``.
+        ``PoolStatus.REGISTERED``; Ogmios reports no retirement epoch, so
+        ``retiring_epoch`` stays ``None``. ``opcert_counter`` also stays
+        ``None``: the counter lives in a separate whole-chain query, which
+        :meth:`kes_period_info` makes rather than paying for it here.
 
         Args:
             pool_id (str): The pool's ID, bech32 encoded.
@@ -710,6 +817,59 @@ class OgmiosChainContext(ChainContext):
             status=PoolStatus.REGISTERED,
         )
 
+    def kes_period_info(
+        self,
+        pool: Optional[PoolOperator] = None,
+        op_cert: Optional[Union[bytes, str]] = None,
+    ) -> KESPeriodInfo:
+        """Get the KES period information for a pool's operational certificate.
+
+        Backed by ``queryLedgerState/operationalCertificates``, which reports
+        the counter registered on chain for every stake pool that has issued an
+        operational certificate.
+
+        Ogmios has no view of a local certificate file and reports no KES
+        period, so ``on_disk_op_cert_count`` and ``on_disk_kes_start`` are never
+        populated; a `cardano-cli` context can supply those. ``op_cert`` is
+        accepted for signature compatibility and ignored — decoding the CBOR
+        certificate is the caller's job, and inventing counters from it here
+        would not make them Ogmios' answer.
+
+        Args:
+            pool (Optional[PoolOperator]): The pool operator. Required here,
+                since the counters are keyed by pool ID.
+            op_cert (Optional[Union[bytes, str]]): Ignored, see above.
+
+        Returns:
+            KESPeriodInfo: The on-chain counter and the counter to use for the
+            next certificate.
+
+        Raises:
+            OgmiosError: If ``pool`` is not given, or if the pool has no
+                counter on chain. Ogmios lists only pools that have issued an
+                operational certificate, so a missing pool is reported as such
+                rather than as a counter of ``-1``, which would claim the pool
+                is registered but has never minted a block.
+        """
+        if pool is None:
+            raise OgmiosError(
+                "Ogmios reports operational certificate counters by pool ID, so "
+                "a pool operator must be provided."
+            )
+
+        pool_id = pool.encode()
+        counters = self._query_operational_certificates()
+        if pool_id not in counters:
+            raise OgmiosError(
+                f"No operational certificate counter found for pool: {pool_id}"
+            )
+
+        on_chain = int(counters[pool_id])
+        return KESPeriodInfo(
+            on_chain_op_cert_count=on_chain,
+            next_chain_op_cert_count=on_chain + 1,
+        )
+
     # -- Treasury ---------------------------------------------------------
 
     def treasury(self) -> int:
@@ -724,6 +884,147 @@ class OgmiosChainContext(ChainContext):
         return treasury
 
     # -- Governance -------------------------------------------------------
+
+    def drep_info(self, drep: DRep) -> DRepInfo:
+        """Get a delegate representative's registration and voting power.
+
+        Backed by ``queryLedgerState/delegateRepresentatives``, filtered on the
+        DRep's credential so the node does not have to enumerate every DRep.
+        The two predefined options — always-abstain and always-no-confidence —
+        are answered from the unfiltered query, which always returns them.
+
+        ``active`` is derived: Ogmios reports the epoch a registration lapses in
+        (``mandate``) rather than a liveness flag, so a DRep counts as active
+        while the current epoch has not passed that expiry. That costs one extra
+        ``queryLedgerState/epoch`` call. A DRep with no mandate is reported as
+        active, since nothing says it has lapsed.
+
+        Args:
+            drep (DRep): The DRep to look up.
+
+        Returns:
+            DRepInfo: The DRep's information. A key- or script-hash DRep the
+            ledger does not list is reported as ``NOT_REGISTERED`` with zero
+            stake. ``status`` is only ever ``REGISTERED`` or
+            ``NOT_REGISTERED``: the ledger drops a DRep's record when it
+            retires, so ``RETIRED`` is indistinguishable from never registered
+            here.
+
+        Raises:
+            OgmiosError: If a key- or script-hash DRep carries no credential, or
+                if Ogmios omits a predefined option it is documented to always
+                return.
+        """
+        predefined = {
+            DRepKind.ALWAYS_ABSTAIN: "abstain",
+            DRepKind.ALWAYS_NO_CONFIDENCE: "noConfidence",
+        }.get(drep.kind)
+
+        if predefined is not None:
+            for summary in self._query_delegate_representatives():
+                if summary.get("type") == predefined:
+                    return DRepInfo(
+                        drep=drep,
+                        active=True,
+                        stake=self._lovelace(summary.get("stake")),
+                        status=DRepStatus.REGISTERED,
+                    )
+            raise OgmiosError(
+                f"Ogmios did not report the {predefined} delegate representative."
+            )
+
+        if drep.credential is None:
+            raise OgmiosError(f"DRep carries no credential to look up: {drep.kind}")
+
+        credential = drep.credential.payload.hex()
+        if drep.kind == DRepKind.SCRIPT_HASH:
+            summaries = self._query_delegate_representatives(scripts=[credential])
+        else:
+            summaries = self._query_delegate_representatives(keys=[credential])
+
+        for summary in summaries:
+            # The predefined options come back alongside the filtered results.
+            if summary.get("type") != "registered":
+                continue
+            if summary.get("id") != credential:
+                continue
+            return self._drep_info_from_summary(drep, summary, self.epoch)
+
+        return DRepInfo(
+            drep=drep, active=False, stake=0, status=DRepStatus.NOT_REGISTERED
+        )
+
+    def gov_action_info(self, gov_action_id: GovActionId) -> GovActionInfo:
+        """Get the lifecycle information for a governance action.
+
+        Backed by ``queryLedgerState/governanceProposals``, which has no
+        single-proposal form here, so the list is fetched and filtered.
+
+        Args:
+            gov_action_id (GovActionId): The action's identifier.
+
+        Returns:
+            GovActionInfo: The action's information. ``gov_action`` carries
+            Ogmios' own ``action`` object rather than a parsed pycardano action:
+            Ogmios describes an action as free-form JSON keyed by governance
+            type, which does not map onto pycardano's action classes without
+            guessing. ``ratified_epoch``, ``enacted_epoch``, ``dropped_epoch``
+            and ``expired_epoch`` are always unset — this query returns only
+            proposals that are still live, so a resolved action is absent
+            rather than annotated, and :attr:`GovActionInfo.status` is always
+            ``None`` here.
+
+        Raises:
+            OgmiosError: If the action is not among the active proposals.
+        """
+        proposal = self._find_proposal(gov_action_id)
+        since = proposal.get("since") or {}
+        until = proposal.get("until") or {}
+        return GovActionInfo(
+            gov_action_id=gov_action_id,
+            gov_action=proposal.get("action"),
+            proposed_in=since.get("epoch"),
+            expires_after=until.get("epoch"),
+        )
+
+    def gov_action_votes(self, gov_action_id: GovActionId) -> GovActionVotes:
+        """Get the votes recorded against a governance action, by voter class.
+
+        Backed by ``queryLedgerState/governanceProposals``, whose entries carry
+        the proposal procedure and every vote cast so far.
+
+        Args:
+            gov_action_id (GovActionId): The action's identifier.
+
+        Returns:
+            GovActionVotes: The proposal plus its committee, DRep and stake pool
+            votes. Empty vote lists mean no votes have been recorded, not that
+            Ogmios cannot report them. See :meth:`gov_action_info` for what
+            ``gov_action`` holds and why the resolution epochs stay unset.
+
+        Raises:
+            OgmiosError: If the action is not among the active proposals.
+        """
+        return self._gov_action_votes(self._find_proposal(gov_action_id))
+
+    def gov_actions_all(self) -> List[GovActionVotes]:
+        """Get every active governance proposal with its votes.
+
+        Backed by a single unfiltered ``queryLedgerState/governanceProposals``,
+        which already carries the votes — unlike the REST backends, this needs
+        no further request per proposal.
+
+        Returns:
+            List[GovActionVotes]: One entry per proposal the ledger still holds.
+            A proposal whose reference cannot be read is skipped rather than
+            returned without an identifier.
+        """
+        actions = []
+        for proposal in self._query_governance_proposals():
+            if self._proposal_gov_action_id(proposal) is None:
+                continue
+            actions.append(self._gov_action_votes(proposal))
+        return actions
 
     def committee_member_info(
         self,
@@ -791,6 +1092,28 @@ class OgmiosChainContext(ChainContext):
         )
 
     # -- Stake distributions ----------------------------------------------
+
+    def drep_stake_distribution(self) -> List[DRepStakeEntry]:
+        """Get the stake delegated to each DRep this epoch.
+
+        Backed by an unfiltered ``queryLedgerState/delegateRepresentatives``,
+        whose ``stake`` field is the DRep's voting power in lovelace.
+
+        Returns:
+            List[DRepStakeEntry]: One entry per registered DRep, plus one each
+            for the always-abstain and always-no-confidence options, which the
+            ledger tracks as stake pots of their own. A summary whose credential
+            cannot be read is skipped rather than returned with no DRep.
+        """
+        entries = []
+        for summary in self._query_delegate_representatives():
+            drep = self._drep_from_summary(summary)
+            if drep is None:
+                continue
+            entries.append(
+                DRepStakeEntry(drep=drep, stake=self._lovelace(summary.get("stake")))
+            )
+        return entries
 
     def spo_stake_distribution(self) -> List[SPOStakeEntry]:
         """Get the stake delegated to each stake pool this epoch.
@@ -908,6 +1231,202 @@ class OgmiosChainContext(ChainContext):
             hot_credential=hot_credential,
             expiration=mandate.get("epoch"),
             status=CommitteeMemberStatus(status) if status else None,
+        )
+
+    # -- Governance parsing helpers ---------------------------------------
+
+    @staticmethod
+    def _lovelace(value: Any) -> Optional[int]:
+        """Read a lovelace amount from Ogmios' ``{"ada": {"lovelace": n}}``."""
+        if not isinstance(value, dict):
+            return None
+        ada = value.get("ada")
+        if not isinstance(ada, dict):
+            return None
+        lovelace = ada.get("lovelace")
+        return lovelace if isinstance(lovelace, int) else None
+
+    @staticmethod
+    def _anchor_from_ogmios(value: Any) -> Optional[Anchor]:
+        """Convert Ogmios' ``{"url", "hash"}`` metadata to a PyCardano anchor."""
+        if not isinstance(value, dict):
+            return None
+        url = value.get("url")
+        data_hash = value.get("hash")
+        if not isinstance(url, str) or not isinstance(data_hash, str):
+            return None
+        try:
+            return Anchor(url=url, data_hash=AnchorDataHash(bytes.fromhex(data_hash)))
+        except (AssertionError, ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _drep_from_credential(entry: Any) -> Optional[DRep]:
+        """Build a DRep from an Ogmios ``{id, from}`` credential pair.
+
+        Args:
+            entry (Any): The pair, as it appears on a DRep summary or on the
+                issuer of a vote.
+
+        Returns:
+            Optional[DRep]: The DRep, or ``None`` when the pair is unreadable or
+            names a credential origin this backend does not recognise.
+        """
+        if not isinstance(entry, dict):
+            return None
+        origin = entry.get("from")
+        payload = entry.get("id")
+        if not isinstance(payload, str):
+            return None
+        try:
+            if origin == "script":
+                return DRep(
+                    kind=DRepKind.SCRIPT_HASH,
+                    credential=ScriptHash(bytes.fromhex(payload)),
+                )
+            if origin == "verificationKey":
+                return DRep(
+                    kind=DRepKind.VERIFICATION_KEY_HASH,
+                    credential=VerificationKeyHash(bytes.fromhex(payload)),
+                )
+        except (AssertionError, ValueError, TypeError):
+            return None
+        return None
+
+    @classmethod
+    def _drep_from_summary(cls, summary: Any) -> Optional[DRep]:
+        """Build a DRep from one ``delegateRepresentatives`` entry."""
+        if not isinstance(summary, dict):
+            return None
+        kinds = {
+            "abstain": DRepKind.ALWAYS_ABSTAIN,
+            "noConfidence": DRepKind.ALWAYS_NO_CONFIDENCE,
+        }
+        summary_type = summary.get("type")
+        kind = kinds.get(summary_type) if isinstance(summary_type, str) else None
+        if kind is not None:
+            return DRep(kind=kind)
+        return cls._drep_from_credential(summary)
+
+    @classmethod
+    def _drep_info_from_summary(
+        cls, drep: DRep, summary: Dict[str, Any], current_epoch: int
+    ) -> DRepInfo:
+        """Convert a registered ``delegateRepresentatives`` entry to a DRepInfo."""
+        mandate = summary.get("mandate") or {}
+        expiry = mandate.get("epoch") if isinstance(mandate, dict) else None
+
+        return DRepInfo(
+            drep=drep,
+            active=expiry is None or current_epoch <= expiry,
+            anchor=cls._anchor_from_ogmios(summary.get("metadata")),
+            deposit=cls._lovelace(summary.get("deposit")),
+            stake=cls._lovelace(summary.get("stake")),
+            expiry=expiry,
+            status=DRepStatus.REGISTERED,
+        )
+
+    @staticmethod
+    def _proposal_gov_action_id(proposal: Any) -> Optional[GovActionId]:
+        """Read the action id from a proposal's ``proposal`` reference."""
+        if not isinstance(proposal, dict):
+            return None
+        reference = proposal.get("proposal")
+        if not isinstance(reference, dict):
+            return None
+        transaction = reference.get("transaction")
+        tx_id = transaction.get("id") if isinstance(transaction, dict) else None
+        index = reference.get("index")
+        if not isinstance(tx_id, str) or not isinstance(index, int):
+            return None
+        try:
+            return GovActionId(
+                transaction_id=TransactionId(bytes.fromhex(tx_id)),
+                gov_action_index=index,
+            )
+        except (AssertionError, ValueError, TypeError):
+            return None
+
+    def _find_proposal(self, gov_action_id: GovActionId) -> Dict[str, Any]:
+        """Find one active proposal by its action id.
+
+        Raises:
+            OgmiosError: If no active proposal carries that id.
+        """
+        for proposal in self._query_governance_proposals():
+            if self._proposal_gov_action_id(proposal) == gov_action_id:
+                return proposal
+        raise OgmiosError(
+            "Governance action not found among the active proposals: "
+            f"{gov_action_id.transaction_id}#{gov_action_id.gov_action_index}"
+        )
+
+    @staticmethod
+    def _parse_vote(value: Any) -> Optional[Vote]:
+        """Parse Ogmios' spelling of a vote."""
+        votes = {"yes": Vote.YES, "no": Vote.NO, "abstain": Vote.ABSTAIN}
+        return votes.get(value) if isinstance(value, str) else None
+
+    @classmethod
+    def _split_votes(
+        cls, raw_votes: Any
+    ) -> Tuple[List[CommitteeVote], List[DRepVote], List[StakePoolVote]]:
+        """Split a proposal's flat vote list by the role of its issuer.
+
+        Genesis delegate votes are dropped: they are a pre-Conway construct with
+        no place in any of the three voter classes the models keep.
+        """
+        committee: List[CommitteeVote] = []
+        dreps: List[DRepVote] = []
+        pools: List[StakePoolVote] = []
+
+        for raw in raw_votes if isinstance(raw_votes, list) else []:
+            if not isinstance(raw, dict):
+                continue
+            issuer = raw.get("issuer")
+            if not isinstance(issuer, dict):
+                continue
+            vote = cls._parse_vote(raw.get("vote"))
+            anchor = cls._anchor_from_ogmios(raw.get("metadata"))
+            role = issuer.get("role")
+
+            if role == "constitutionalCommittee":
+                try:
+                    voter = CommitteeHotCredential(cls._credential_payload(issuer))
+                except (AssertionError, OgmiosError, KeyError, ValueError, TypeError):
+                    continue
+                committee.append(CommitteeVote(voter=voter, vote=vote, anchor=anchor))
+            elif role == "delegateRepresentative":
+                drep = cls._drep_from_credential(issuer)
+                if drep is None:
+                    continue
+                dreps.append(DRepVote(voter=drep, vote=vote, anchor=anchor))
+            elif role == "stakePoolOperator":
+                pool_id = issuer.get("id")
+                if not isinstance(pool_id, str):
+                    continue
+                pools.append(StakePoolVote(voter=pool_id, vote=vote, anchor=anchor))
+
+        return committee, dreps, pools
+
+    @classmethod
+    def _gov_action_votes(cls, proposal: Dict[str, Any]) -> GovActionVotes:
+        """Assemble a GovActionVotes from one ``governanceProposals`` entry."""
+        committee, dreps, pools = cls._split_votes(proposal.get("votes"))
+        since = proposal.get("since") or {}
+        until = proposal.get("until") or {}
+
+        return GovActionVotes(
+            gov_action_id=cls._proposal_gov_action_id(proposal),
+            gov_action=proposal.get("action"),
+            committee_votes=committee,
+            drep_votes=dreps,
+            stake_pool_votes=pools,
+            deposit=cls._lovelace(proposal.get("deposit")),
+            deposit_return_addr=proposal.get("returnAccount"),
+            anchor=cls._anchor_from_ogmios(proposal.get("metadata")),
+            proposed_in=since.get("epoch") if isinstance(since, dict) else None,
+            expires_after=until.get("epoch") if isinstance(until, dict) else None,
         )
 
 

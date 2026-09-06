@@ -29,6 +29,10 @@ dependencies = [
     # Pinned below 6.0.0: pycardano's cbor2pure shim is incompatible with cbor2 6.x.
     # Floor of 5.9.0 addresses GHSA-3c37-wwvx-h642.
     "cbor2>=5.9.0,<6.0.0",
+    # Imported directly by the Blockfrost backend rather than only via
+    # pycardano. 0.7.0 is the floor: it adds the governance and network_eras
+    # endpoints that backend uses.
+    "blockfrost-python>=0.7.0,<1.0.0",
     "yaci-client>=1.0,<2.0",
 ]
 
@@ -36,6 +40,14 @@ dependencies = [
 homepage = "https://github.com/KINGH242/pccontext"
 repository = "https://github.com/KINGH242/pccontext.git"
 documentation = "https://pccontext.readthedocs.io/en/latest/"
+
+
+# Temporary: points koios-python at the fork branch that adds the Governance
+# endpoints, so they can be exercised here before the upstream PR is opened.
+# Must be removed before any release — a git dependency cannot be published.
+[tool.poetry.dependencies]
+koios-python = { git = "https://github.com/KINGH242/koios-python.git", branch = "feat/governance-api" }
+blockfrost-python = { git = "https://github.com/KINGH242/blockfrost-python.git", branch = "feat/governance-committee" }
 
 
 [tool.poetry.group.dev.dependencies]

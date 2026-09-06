@@ -12,7 +12,12 @@ from pycardano.address import Address
 from pycardano.backend.base import ProtocolParameters as PyCardanoProtocolParameters
 from pycardano.certificate import Anchor, DRep
 from pycardano.exception import TransactionFailedException
-from pycardano.governance import GovActionId, Vote
+from pycardano.governance import (
+    CommitteeColdCredential,
+    CommitteeHotCredential,
+    GovActionId,
+    Vote,
+)
 from pycardano.hash import (
     SCRIPT_HASH_SIZE,
     AnchorDataHash,
@@ -56,10 +61,12 @@ from pycardano.transaction import (
 from pycardano.types import JsonDict
 
 from pccontext.backend import ChainContext
-from pccontext.enums import DRepStatus, Network, PoolStatus
+from pccontext.enums import CommitteeMemberStatus, DRepStatus, Era, Network, PoolStatus
 from pccontext.exceptions import BlockfrostError, PoolMetadataError
 from pccontext.models import (
     ChainTip,
+    CommitteeMemberInfo,
+    CommitteeStateInfo,
     CommitteeVote,
     DRepInfo,
     DRepStakeEntry,
@@ -283,6 +290,36 @@ class BlockFrostChainContext(ChainContext):
             block=block.height,
             epoch=block.epoch,
         )
+
+    @property
+    def era(self) -> Optional[Era]:
+        """The era the chain is currently in.
+
+        Blockfrost's ``/network/eras`` returns one summary per era in
+        chronological order but does not name them, so the era is the last
+        summary's position in the fixed Byron→Conway sequence. This is the same
+        derivation the Ogmios client uses for its own era query, and unlike a
+        hardcoded epoch table it holds on every network: a testnet that began in
+        a later era still reports the earlier eras as zero-length summaries.
+
+        Returns:
+            Optional[Era]: The current era, or ``None`` if Blockfrost reports no
+            eras or more eras than this library knows about — the latter meaning
+            a hard fork has added one.
+
+        Raises:
+            :class:`BlockfrostError`: When the era summaries cannot be fetched.
+        """
+        try:
+            eras = self.api.network_eras()
+        except ApiError as e:
+            raise BlockfrostError(f"Failed to fetch the network eras. {e}") from e
+
+        known = list(Era)
+        index = len(eras) - 1
+        if index < 0 or index >= len(known):
+            return None
+        return known[index]
 
     @property
     def genesis_param(self) -> GenesisParameters:
@@ -837,6 +874,43 @@ class BlockFrostChainContext(ChainContext):
 
     # -- Governance --------------------------------------------------------
 
+    def _require_endpoint(self, name: str, query: str) -> Any:
+        """Resolve a blockfrost-python client method, or explain its absence.
+
+        The Blockfrost API has ``/governance/committee``, but
+        ``blockfrost-python`` 0.7.0 wraps no committee endpoint. Rather than
+        fail with an ``AttributeError``, report the :class:`NotImplementedError`
+        the base class documents.
+
+        Args:
+            name (str): The client method to resolve.
+            query (str): The chain-context query being served, for the message.
+
+        Returns:
+            Any: The bound client method.
+
+        Raises:
+            NotImplementedError: When the installed client lacks the endpoint.
+        """
+        method = getattr(self.api, name, None)
+        if not callable(method):
+            raise NotImplementedError(
+                f"{query} is not implemented for {self.name}: the installed "
+                f"blockfrost-python has no {name}. The Blockfrost API supports "
+                f"the endpoint; the wrapper does not yet."
+            )
+        return method
+
+    @staticmethod
+    def _as_optional_int(value: Any) -> Optional[int]:
+        """Coerce a reported amount to int, keeping "not reported" apart from zero."""
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
     @staticmethod
     def _drep_id(drep: DRep) -> str:
         """Bech32 id Blockfrost identifies a DRep by."""
@@ -924,7 +998,7 @@ class BlockFrostChainContext(ChainContext):
             active=bool(getattr(result, "active", False)),
             anchor=self._drep_anchor(drep_id),
             deposit=None,
-            stake=int(getattr(result, "amount", 0) or 0),
+            stake=self._as_optional_int(getattr(result, "amount", None)),
             expiry=None,
             status=self._drep_status(result),
         )
@@ -948,7 +1022,7 @@ class BlockFrostChainContext(ChainContext):
         return [
             DRepStakeEntry(
                 drep=self._decode_drep(drep.drep_id),
-                stake=int(getattr(drep, "amount", 0) or 0),
+                stake=self._as_optional_int(getattr(drep, "amount", None)),
             )
             for drep in dreps
         ]
@@ -1122,6 +1196,118 @@ class BlockFrostChainContext(ChainContext):
                 self._gov_action_votes(self._proposal_detail(gov_action_id.encode()))
             )
         return results
+
+    # -- Constitutional committee -----------------------------------------
+
+    def _committee_member(self, member: Any, epoch: int) -> CommitteeMemberInfo:
+        """Build a committee member from one Blockfrost committee entry."""
+        cold = hot = None
+        cold_hex = getattr(member, "cc_cold_hex", None)
+        hot_hex = getattr(member, "cc_hot_hex", None)
+        if cold_hex:
+            payload = bytes.fromhex(cold_hex)
+            cold = CommitteeColdCredential(
+                ScriptHash(payload)
+                if getattr(member, "cc_cold_has_script", False)
+                else VerificationKeyHash(payload)
+            )
+        if hot_hex:
+            payload = bytes.fromhex(hot_hex)
+            hot = CommitteeHotCredential(
+                ScriptHash(payload)
+                if getattr(member, "cc_hot_has_script", False)
+                else VerificationKeyHash(payload)
+            )
+
+        expiration = getattr(member, "expiration_epoch", None)
+        expiration = None if expiration is None else int(expiration)
+        # Blockfrost reports "authorized", "not_authorized" or "resigned". A
+        # term runs to the end of its expiration epoch, so a member is EXPIRED
+        # only once the chain is past it. Otherwise an authorised member is
+        # ACTIVE, and anything else is not a recognised voter.
+        if expiration is not None and expiration < epoch:
+            status = CommitteeMemberStatus.EXPIRED
+        elif str(getattr(member, "status", "")).lower() == "authorized":
+            status = CommitteeMemberStatus.ACTIVE
+        else:
+            status = CommitteeMemberStatus.UNRECOGNIZED
+
+        return CommitteeMemberInfo(
+            cold_credential=cold,
+            hot_credential=hot,
+            expiration=expiration,
+            status=status,
+        )
+
+    def committee_state(self) -> CommitteeStateInfo:
+        """Get the full constitutional committee state.
+
+        Returns:
+            CommitteeStateInfo: Every member with its cold-to-hot authorisation
+            and term, plus the quorum threshold Blockfrost reports as a
+            numerator over a denominator. A dissolved committee reports no
+            members and no threshold.
+
+        Raises:
+            :class:`BlockfrostError`: When the committee cannot be fetched.
+        """
+        try:
+            committee = self._require_endpoint(
+                "governance_committee", "committee_state"
+            )()
+        except ApiError as e:
+            raise BlockfrostError(f"Failed to fetch the committee state. {e}") from e
+
+        quorum = getattr(committee, "quorum", None)
+        numerator = getattr(quorum, "numerator", None)
+        denominator = getattr(quorum, "denominator", None)
+        threshold = (
+            int(numerator) / int(denominator)
+            if numerator is not None and denominator
+            else None
+        )
+
+        epoch = self.epoch
+        return CommitteeStateInfo(
+            members=[
+                self._committee_member(m, epoch)
+                for m in (getattr(committee, "members", None) or [])
+            ],
+            threshold=threshold,
+        )
+
+    def committee_member_info(
+        self,
+        cold: Optional[CommitteeColdCredential] = None,
+        hot: Optional[CommitteeHotCredential] = None,
+    ) -> CommitteeMemberInfo:
+        """Get a constitutional committee member's authorisation and term.
+
+        Blockfrost reports the committee as a whole, so this filters that state
+        rather than issuing a per-member query.
+
+        Args:
+            cold (Optional[CommitteeColdCredential]): The member's cold
+                credential. Optional if ``hot`` is given.
+            hot (Optional[CommitteeHotCredential]): A hot credential the member
+                has authorised. Optional if ``cold`` is given.
+
+        Returns:
+            CommitteeMemberInfo: The matching member.
+
+        Raises:
+            ValueError: If neither credential is given, or no member matches.
+        """
+        if cold is None and hot is None:
+            raise ValueError("A cold or hot committee credential must be provided.")
+
+        for member in self.committee_state().members:
+            if cold is not None and member.cold_credential == cold:
+                return member
+            if hot is not None and member.hot_credential == hot:
+                return member
+
+        raise ValueError("No committee member matched the given credential.")
 
     def spo_stake_distribution(self) -> List[SPOStakeEntry]:
         """Get the stake delegated to each stake pool this epoch.

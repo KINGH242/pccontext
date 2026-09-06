@@ -1,9 +1,12 @@
+import json
+from contextlib import contextmanager
 from datetime import datetime
 from decimal import Decimal
 from fractions import Fraction
 from unittest.mock import patch
 
 import pytest
+from ogmios.client import Client as OgmiosClient
 from ogmios.statequery import (
     QueryBlockHeight,
     QueryConstitutionalCommittee,
@@ -19,6 +22,8 @@ from ogmios.statequery import (
 )
 from pycardano import (
     Address,
+    Anchor,
+    AnchorDataHash,
     CommitteeColdCredential,
     CommitteeHotCredential,
     DRep,
@@ -35,13 +40,21 @@ from pycardano import (
     TransactionId,
     TransactionOutput,
     VerificationKeyHash,
+    Vote,
 )
 from pycardano.transaction import MultiAsset, TransactionInput, Value
 
 from pccontext.backend.ogmios import ALONZO_COINS_PER_UTXO_WORD, OgmiosChainContext
-from pccontext.enums import CommitteeMemberStatus, Era, PoolStatus
+from pccontext.enums import CommitteeMemberStatus, DRepStatus, Era, PoolStatus
 from pccontext.exceptions import OgmiosError
-from pccontext.models import GenesisParameters, SPOStakeEntry
+from pccontext.models import (
+    CommitteeVote,
+    DRepStakeEntry,
+    DRepVote,
+    GenesisParameters,
+    SPOStakeEntry,
+    StakePoolVote,
+)
 
 
 class TestOgmiosChainContext:
@@ -486,6 +499,186 @@ def ogmios_constitutional_committee_response():
     }
 
 
+OPCERT_POOL_ID = "pool1397kpa7ylzg4lqrmj3xr28xzq2548c8lafw90qyxvucsslap03v"
+DREP_KEY_HASH = "000e058ed523b3c64865089580f1604e13178f5df2bee538e1b96203"
+DREP_SCRIPT_HASH = "0c5d713c61a09e05d5f975aabf73f8e699ea7ed004141fd4ece6f8d2"
+DREP_METADATA_HASH = "b5f8f69913ca29e453f2ac9fd0d2a906e2f50f75d14ee78d2afb08cbb5a96294"
+DREP_METADATA_URL = "https://metadata-govtool.cardanoapi.io/data/Justine"
+
+GOV_ACTION_TX_ID = "910199f3c5a5d58c2342285fc40837a0f7041925580705f3adc083ece0f06d3d"
+GOV_RETURN_ACCOUNT = "stake_test1up8xg8ur80nsymvefrlk4dshjyfrze4pep843l289f4n8fgrtrmy4"
+GOV_METADATA_HASH = "866a28625ad0a73892c4a7956f4400e59354d7d9281721bb2c15dbe67ef97d3b"
+GOV_METADATA_URL = "https://metadata-govtool.cardanoapi.io/data/decumbo"
+DREP_VOTER_NO = "ab0d62f6646c980cde6fd65b4a5bb7cbfc8c2b2dabea61f4b46737a5"
+DREP_VOTER_YES = "b1186c121f6a75f3ba749aa5b1e50b41b9be1726f3306ece7d77d4c1"
+
+
+@contextmanager
+def ogmios_exchange(*responses):
+    """Stand in for the websocket exchange of a hand-rolled ledger-state query.
+
+    The installed ``ogmios`` client binds none of the three queries used below,
+    so there is no ``QueryX.execute`` to patch: the backend writes the JSON-RPC
+    request itself. This patches the socket instead, yields the list the
+    requests are recorded into, and answers each with the next canned response.
+    """
+    sent = []
+
+    with (
+        patch("ogmios.client.connect"),
+        patch.object(
+            OgmiosClient,
+            "send",
+            side_effect=lambda request: sent.append(json.loads(request)),
+        ),
+        patch.object(OgmiosClient, "receive", side_effect=list(responses)),
+    ):
+        yield sent
+
+
+@pytest.fixture
+def ogmios_operational_certificates_response():
+    """A real ``queryLedgerState/operationalCertificates`` response."""
+    return {
+        "jsonrpc": "2.0",
+        "id": "4tKK9",
+        "method": "queryLedgerState/operationalCertificates",
+        "result": {
+            "pool1ssvpmsymcz8nd6tu3wgdhy93ajw0yrdauh9gp3djxvda5g6nqma": 0,
+            "pool14cwzrv0mtr68kp44t9fn5wplk9ku20g6rv98sxggd3azg60qukm": 6,
+            "pool18ut2jlv66s0dh70pp4za2pu42dg57jynflkj9fexamcfqcsmc5q": 0,
+            "pool1d4nsv4wa0h3cvdkzuj7trx9d3gz93cj4hkslhekhq0wmcdpwmps": 10,
+            "pool1sqva3m6zhvwf9kmuek7gsayxyknzv68ltgqqpeptmdgrqp2lmkf": 4,
+            OPCERT_POOL_ID: 12,
+        },
+    }
+
+
+@pytest.fixture
+def ogmios_delegate_representatives_response():
+    """A real ``queryLedgerState/delegateRepresentatives`` response.
+
+    Extended with one script-credential DRep, so the script branch of the
+    credential filter is covered by the same shape the ledger returns.
+    """
+    return {
+        "jsonrpc": "2.0",
+        "method": "queryLedgerState/delegateRepresentatives",
+        "id": "zXWtP",
+        "result": [
+            {
+                "from": "verificationKey",
+                "id": DREP_KEY_HASH,
+                "deposit": {"ada": {"lovelace": 500000000}},
+                "type": "registered",
+                "stake": {"ada": {"lovelace": 0}},
+                "mandate": {"epoch": 1068},
+                "metadata": {
+                    "hash": DREP_METADATA_HASH,
+                    "url": DREP_METADATA_URL,
+                },
+                "delegators": [],
+            },
+            {
+                "from": "script",
+                "id": DREP_SCRIPT_HASH,
+                "deposit": {"ada": {"lovelace": 500000000}},
+                "type": "registered",
+                "stake": {"ada": {"lovelace": 123456789}},
+                "delegators": [],
+            },
+            {
+                "stake": {"ada": {"lovelace": 46115228289209}},
+                "type": "abstain",
+            },
+            {
+                "stake": {"ada": {"lovelace": 15049380877790}},
+                "type": "noConfidence",
+            },
+        ],
+    }
+
+
+@pytest.fixture
+def ogmios_governance_proposals_response():
+    """A real ``queryLedgerState/governanceProposals`` response.
+
+    Extended with a constitutional committee vote and a stake pool vote, so all
+    three voter classes are exercised; the two DRep votes are as returned.
+    """
+    return {
+        "jsonrpc": "2.0",
+        "id": "OmNgj",
+        "method": "queryLedgerState/governanceProposals",
+        "result": [
+            {
+                "votes": [
+                    {
+                        "vote": "no",
+                        "issuer": {
+                            "id": DREP_VOTER_NO,
+                            "from": "verificationKey",
+                            "role": "delegateRepresentative",
+                        },
+                    },
+                    {
+                        "vote": "yes",
+                        "issuer": {
+                            "role": "delegateRepresentative",
+                            "id": DREP_VOTER_YES,
+                            "from": "verificationKey",
+                        },
+                    },
+                    {
+                        "vote": "yes",
+                        "issuer": {
+                            "role": "constitutionalCommittee",
+                            "id": COMMITTEE_HOT_SCRIPT_HASH,
+                            "from": "script",
+                        },
+                    },
+                    {
+                        "vote": "abstain",
+                        "issuer": {
+                            "role": "stakePoolOperator",
+                            "id": POOL_ID,
+                        },
+                    },
+                    {
+                        "vote": "yes",
+                        "issuer": {
+                            "role": "genesisDelegate",
+                            "id": COMMITTEE_RESIGNED_HASH,
+                            "from": "verificationKey",
+                        },
+                    },
+                ],
+                "action": {
+                    "type": "treasuryWithdrawals",
+                    "withdrawals": {
+                        GOV_RETURN_ACCOUNT: {"ada": {"lovelace": 889000000}},
+                    },
+                    "guardrails": {
+                        "hash": "fa24fb305126805cf2164c161d852a0e7330cf988f1fe558cf7d4a64"
+                    },
+                },
+                "deposit": {"ada": {"lovelace": 100000000000}},
+                "returnAccount": GOV_RETURN_ACCOUNT,
+                "proposal": {
+                    "index": 0,
+                    "transaction": {"id": GOV_ACTION_TX_ID},
+                },
+                "metadata": {
+                    "url": GOV_METADATA_URL,
+                    "hash": GOV_METADATA_HASH,
+                },
+                "since": {"epoch": 1021},
+                "until": {"epoch": 1051},
+            }
+        ],
+    }
+
+
 @pytest.fixture
 def ogmios_treasury_response():
     return {
@@ -861,30 +1054,373 @@ class TestOgmiosTreasuryAndGovernanceQueries:
             )
 
 
-class TestOgmiosUnsupportedQueries:
-    """Queries Ogmios v6, as exposed by the installed client, cannot answer."""
+class TestOgmiosRawLedgerStateQueries:
+    """The JSON-RPC envelope the backend writes for the unbound queries."""
 
-    def test_kes_period_info_is_not_implemented(self, ogmios_chain_context):
-        with pytest.raises(NotImplementedError):
+    def test_error_responses_are_raised(self, ogmios_chain_context):
+        response = {
+            "jsonrpc": "2.0",
+            "method": "queryLedgerState/operationalCertificates",
+            "error": {"code": 2002, "message": "unavailable in current era"},
+        }
+        with (
+            ogmios_exchange(response),
+            pytest.raises(OgmiosError, match="responded with an error"),
+        ):
+            ogmios_chain_context._query_operational_certificates()
+
+    def test_a_response_to_another_method_is_rejected(self, ogmios_chain_context):
+        response = {
+            "jsonrpc": "2.0",
+            "method": "queryLedgerState/epoch",
+            "result": 42,
+        }
+        with (
+            ogmios_exchange(response),
+            pytest.raises(OgmiosError, match="Incorrect method"),
+        ):
+            ogmios_chain_context._query_operational_certificates()
+
+    def test_a_response_without_a_result_is_rejected(self, ogmios_chain_context):
+        response = {
+            "jsonrpc": "2.0",
+            "method": "queryLedgerState/governanceProposals",
+        }
+        with (
+            ogmios_exchange(response),
+            pytest.raises(OgmiosError, match="Failed to parse"),
+        ):
+            ogmios_chain_context._query_governance_proposals()
+
+
+class TestOgmiosKesPeriodInfo:
+    def test_kes_period_info(
+        self, ogmios_chain_context, ogmios_operational_certificates_response
+    ):
+        with ogmios_exchange(ogmios_operational_certificates_response) as sent:
+            info = ogmios_chain_context.kes_period_info(
+                pool=PoolOperator.from_primitive(OPCERT_POOL_ID)
+            )
+
+        # The query takes no parameters, so none are sent.
+        assert sent == [
+            {
+                "jsonrpc": "2.0",
+                "method": "queryLedgerState/operationalCertificates",
+            }
+        ]
+        assert info.on_chain_op_cert_count == 12
+        assert info.next_chain_op_cert_count == 13
+        # Ogmios sees no local certificate file.
+        assert info.on_disk_op_cert_count is None
+        assert info.on_disk_kes_start is None
+
+    def test_kes_period_info_ignores_the_operational_certificate(
+        self, ogmios_chain_context, ogmios_operational_certificates_response
+    ):
+        with ogmios_exchange(ogmios_operational_certificates_response):
+            info = ogmios_chain_context.kes_period_info(
+                pool=PoolOperator.from_primitive(OPCERT_POOL_ID),
+                op_cert=b"\xde\xad\xbe\xef",
+            )
+
+        assert info.on_disk_op_cert_count is None
+
+    def test_kes_period_info_requires_a_pool(self, ogmios_chain_context):
+        with pytest.raises(OgmiosError, match="pool operator must be provided"):
+            ogmios_chain_context.kes_period_info()
+
+    def test_kes_period_info_for_a_pool_without_a_counter(
+        self, ogmios_chain_context, ogmios_operational_certificates_response
+    ):
+        with (
+            ogmios_exchange(ogmios_operational_certificates_response),
+            pytest.raises(OgmiosError, match="No operational certificate counter"),
+        ):
             ogmios_chain_context.kes_period_info(
                 pool=PoolOperator.from_primitive(POOL_ID)
             )
 
-    def test_drep_queries_are_not_implemented(self, ogmios_chain_context):
-        with pytest.raises(NotImplementedError):
-            ogmios_chain_context.drep_info(DRep(DRepKind.ALWAYS_ABSTAIN))
-        with pytest.raises(NotImplementedError):
-            ogmios_chain_context.drep_stake_distribution()
 
-    def test_governance_proposal_queries_are_not_implemented(
+class TestOgmiosDRepQueries:
+    def test_drep_info_for_a_registered_key_hash_drep(
+        self, ogmios_chain_context, ogmios_delegate_representatives_response
+    ):
+        drep = DRep(
+            DRepKind.VERIFICATION_KEY_HASH,
+            VerificationKeyHash(bytes.fromhex(DREP_KEY_HASH)),
+        )
+        with (
+            ogmios_exchange(ogmios_delegate_representatives_response) as sent,
+            patch.object(QueryEpoch, "execute", return_value=(1000, None)),
+        ):
+            info = ogmios_chain_context.drep_info(drep)
+
+        assert sent == [
+            {
+                "jsonrpc": "2.0",
+                "method": "queryLedgerState/delegateRepresentatives",
+                "params": {"keys": [DREP_KEY_HASH]},
+            }
+        ]
+        assert info.drep == drep
+        assert info.deposit == 500000000
+        assert info.stake == 0
+        assert info.expiry == 1068
+        assert info.status == DRepStatus.REGISTERED
+        assert info.anchor == Anchor(
+            url=DREP_METADATA_URL,
+            data_hash=AnchorDataHash(bytes.fromhex(DREP_METADATA_HASH)),
+        )
+        # The mandate has not lapsed at epoch 1000.
+        assert info.active is True
+
+    def test_drep_info_after_the_mandate_lapses(
+        self, ogmios_chain_context, ogmios_delegate_representatives_response
+    ):
+        drep = DRep(
+            DRepKind.VERIFICATION_KEY_HASH,
+            VerificationKeyHash(bytes.fromhex(DREP_KEY_HASH)),
+        )
+        with (
+            ogmios_exchange(ogmios_delegate_representatives_response),
+            patch.object(QueryEpoch, "execute", return_value=(1069, None)),
+        ):
+            info = ogmios_chain_context.drep_info(drep)
+
+        assert info.active is False
+        # A lapsed registration is still a registration.
+        assert info.status == DRepStatus.REGISTERED
+
+    def test_drep_info_for_a_script_hash_drep(
+        self, ogmios_chain_context, ogmios_delegate_representatives_response
+    ):
+        drep = DRep(DRepKind.SCRIPT_HASH, ScriptHash(bytes.fromhex(DREP_SCRIPT_HASH)))
+        with (
+            ogmios_exchange(ogmios_delegate_representatives_response) as sent,
+            patch.object(QueryEpoch, "execute", return_value=(1000, None)),
+        ):
+            info = ogmios_chain_context.drep_info(drep)
+
+        assert sent[0]["params"] == {"scripts": [DREP_SCRIPT_HASH]}
+        assert info.stake == 123456789
+        # No mandate reported means nothing says the registration has lapsed.
+        assert info.expiry is None
+        assert info.active is True
+
+    def test_drep_info_for_an_unknown_drep(self, ogmios_chain_context):
+        # A filtered query still returns the two predefined options, and never
+        # a registered entry for a DRep the ledger does not know.
+        response = {
+            "jsonrpc": "2.0",
+            "method": "queryLedgerState/delegateRepresentatives",
+            "result": [
+                {"type": "abstain", "stake": {"ada": {"lovelace": 1}}},
+                {"type": "noConfidence", "stake": {"ada": {"lovelace": 2}}},
+            ],
+        }
+        drep = DRep(
+            DRepKind.VERIFICATION_KEY_HASH,
+            VerificationKeyHash(bytes.fromhex("11" * 28)),
+        )
+        with ogmios_exchange(response):
+            info = ogmios_chain_context.drep_info(drep)
+
+        assert info.status == DRepStatus.NOT_REGISTERED
+        assert info.active is False
+        assert info.stake == 0
+
+    @pytest.mark.parametrize(
+        "kind, stake",
+        [
+            (DRepKind.ALWAYS_ABSTAIN, 46115228289209),
+            (DRepKind.ALWAYS_NO_CONFIDENCE, 15049380877790),
+        ],
+    )
+    def test_drep_info_for_the_predefined_options(
+        self,
+        ogmios_chain_context,
+        ogmios_delegate_representatives_response,
+        kind,
+        stake,
+    ):
+        with ogmios_exchange(ogmios_delegate_representatives_response) as sent:
+            info = ogmios_chain_context.drep_info(DRep(kind))
+
+        # The predefined options are always returned, so no filter is sent.
+        assert "params" not in sent[0]
+        assert info.stake == stake
+        assert info.status == DRepStatus.REGISTERED
+        assert info.deposit is None
+
+    def test_drep_info_when_a_predefined_option_is_missing(self, ogmios_chain_context):
+        response = {
+            "jsonrpc": "2.0",
+            "method": "queryLedgerState/delegateRepresentatives",
+            "result": [],
+        }
+        with (
+            ogmios_exchange(response),
+            pytest.raises(OgmiosError, match="did not report the abstain"),
+        ):
+            ogmios_chain_context.drep_info(DRep(DRepKind.ALWAYS_ABSTAIN))
+
+    def test_drep_stake_distribution(
+        self, ogmios_chain_context, ogmios_delegate_representatives_response
+    ):
+        with ogmios_exchange(ogmios_delegate_representatives_response) as sent:
+            distribution = ogmios_chain_context.drep_stake_distribution()
+
+        assert "params" not in sent[0]
+        assert distribution == [
+            DRepStakeEntry(
+                drep=DRep(
+                    DRepKind.VERIFICATION_KEY_HASH,
+                    VerificationKeyHash(bytes.fromhex(DREP_KEY_HASH)),
+                ),
+                stake=0,
+            ),
+            DRepStakeEntry(
+                drep=DRep(
+                    DRepKind.SCRIPT_HASH, ScriptHash(bytes.fromhex(DREP_SCRIPT_HASH))
+                ),
+                stake=123456789,
+            ),
+            DRepStakeEntry(drep=DRep(DRepKind.ALWAYS_ABSTAIN), stake=46115228289209),
+            DRepStakeEntry(
+                drep=DRep(DRepKind.ALWAYS_NO_CONFIDENCE), stake=15049380877790
+            ),
+        ]
+
+    def test_drep_stake_distribution_skips_unreadable_credentials(
         self, ogmios_chain_context
     ):
-        gov_action_id = GovActionId(
+        response = {
+            "jsonrpc": "2.0",
+            "method": "queryLedgerState/delegateRepresentatives",
+            "result": [
+                {
+                    "type": "registered",
+                    "from": "carrierPigeon",
+                    "id": DREP_KEY_HASH,
+                    "stake": {"ada": {"lovelace": 7}},
+                },
+                {"type": "abstain", "stake": {"ada": {"lovelace": 9}}},
+            ],
+        }
+        with ogmios_exchange(response):
+            distribution = ogmios_chain_context.drep_stake_distribution()
+
+        assert distribution == [
+            DRepStakeEntry(drep=DRep(DRepKind.ALWAYS_ABSTAIN), stake=9)
+        ]
+
+
+class TestOgmiosGovernanceProposalQueries:
+    @property
+    def gov_action_id(self) -> GovActionId:
+        return GovActionId(
+            transaction_id=TransactionId(bytes.fromhex(GOV_ACTION_TX_ID)),
+            gov_action_index=0,
+        )
+
+    def test_gov_action_info(
+        self, ogmios_chain_context, ogmios_governance_proposals_response
+    ):
+        with ogmios_exchange(ogmios_governance_proposals_response) as sent:
+            info = ogmios_chain_context.gov_action_info(self.gov_action_id)
+
+        assert sent == [
+            {
+                "jsonrpc": "2.0",
+                "method": "queryLedgerState/governanceProposals",
+            }
+        ]
+        assert info.gov_action_id == self.gov_action_id
+        assert info.proposed_in == 1021
+        assert info.expires_after == 1051
+        # Ogmios describes the action as free-form JSON, which is passed through.
+        assert info.gov_action["type"] == "treasuryWithdrawals"
+        # Only live proposals are returned, so nothing has resolved.
+        assert info.ratified_epoch is None
+        assert info.enacted_epoch is None
+        assert info.dropped_epoch is None
+        assert info.expired_epoch is None
+        assert info.status is None
+
+    def test_gov_action_votes(
+        self, ogmios_chain_context, ogmios_governance_proposals_response
+    ):
+        with ogmios_exchange(ogmios_governance_proposals_response):
+            votes = ogmios_chain_context.gov_action_votes(self.gov_action_id)
+
+        assert votes.gov_action_id == self.gov_action_id
+        assert votes.deposit == 100000000000
+        assert votes.deposit_return_addr == GOV_RETURN_ACCOUNT
+        assert votes.anchor == Anchor(
+            url=GOV_METADATA_URL,
+            data_hash=AnchorDataHash(bytes.fromhex(GOV_METADATA_HASH)),
+        )
+        assert votes.proposed_in == 1021
+        assert votes.expires_after == 1051
+
+        assert votes.drep_votes == [
+            DRepVote(
+                voter=DRep(
+                    DRepKind.VERIFICATION_KEY_HASH,
+                    VerificationKeyHash(bytes.fromhex(DREP_VOTER_NO)),
+                ),
+                vote=Vote.NO,
+            ),
+            DRepVote(
+                voter=DRep(
+                    DRepKind.VERIFICATION_KEY_HASH,
+                    VerificationKeyHash(bytes.fromhex(DREP_VOTER_YES)),
+                ),
+                vote=Vote.YES,
+            ),
+        ]
+        assert votes.committee_votes == [
+            CommitteeVote(
+                voter=CommitteeHotCredential(
+                    ScriptHash(bytes.fromhex(COMMITTEE_HOT_SCRIPT_HASH))
+                ),
+                vote=Vote.YES,
+            )
+        ]
+        assert votes.stake_pool_votes == [
+            StakePoolVote(voter=POOL_ID, vote=Vote.ABSTAIN)
+        ]
+
+    def test_gov_actions_all(
+        self, ogmios_chain_context, ogmios_governance_proposals_response
+    ):
+        with ogmios_exchange(ogmios_governance_proposals_response) as sent:
+            actions = ogmios_chain_context.gov_actions_all()
+
+        # The proposal list already carries the votes: one request, no follow-up.
+        assert len(sent) == 1
+        assert len(actions) == 1
+        assert actions[0].gov_action_id == self.gov_action_id
+        assert len(actions[0].drep_votes) == 2
+
+    def test_gov_actions_all_skips_unreadable_references(self, ogmios_chain_context):
+        response = {
+            "jsonrpc": "2.0",
+            "method": "queryLedgerState/governanceProposals",
+            "result": [{"votes": [], "action": {"type": "information"}}],
+        }
+        with ogmios_exchange(response):
+            assert ogmios_chain_context.gov_actions_all() == []
+
+    def test_gov_action_not_found(
+        self, ogmios_chain_context, ogmios_governance_proposals_response
+    ):
+        missing = GovActionId(
             transaction_id=TransactionId(bytes.fromhex("aa" * 32)), gov_action_index=0
         )
-        with pytest.raises(NotImplementedError):
-            ogmios_chain_context.gov_action_info(gov_action_id)
-        with pytest.raises(NotImplementedError):
-            ogmios_chain_context.gov_action_votes(gov_action_id)
-        with pytest.raises(NotImplementedError):
-            ogmios_chain_context.gov_actions_all()
+        with (
+            ogmios_exchange(ogmios_governance_proposals_response),
+            pytest.raises(OgmiosError, match="Governance action not found"),
+        ):
+            ogmios_chain_context.gov_action_info(missing)

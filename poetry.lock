@@ -156,15 +156,19 @@ name = "blockfrost-python"
 version = "0.7.0"
 description = "The official Python SDK for Blockfrost API v0.1.86"
 optional = false
-python-versions = "<4,>=3.10"
+python-versions = ">=3.10, <4"
 groups = ["main"]
-files = [
-    {file = "blockfrost_python-0.7.0-py3-none-any.whl", hash = "sha256:54eb2693af99d2894c33cea844d888b68187250288d48f8b1e2d79d44f810daf"},
-    {file = "blockfrost_python-0.7.0.tar.gz", hash = "sha256:79a5904fcda56a01b1c5cca3f493e233f6e6ac78f48b96a232842ee826bd2db2"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 requests = "*"
+
+[package.source]
+type = "git"
+url = "https://github.com/KINGH242/blockfrost-python.git"
+reference = "feat/governance-committee"
+resolved_reference = "c58009342c2367e1b4ad6d454e3c97eddfb2f2f0"
 
 [[package]]
 name = "cachetools"
@@ -2748,4 +2752,4 @@ python-dateutil = ">=2.8.0,<3.0.0"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4.0"
-content-hash = "c4be83d87765c9c76b2ef67e296528fb2908aa3cc9bf97f17ebd1d37b9d0d20b"
+content-hash = "9c3dd9e1e53347d8e47969555341aa307babc2f7592adda26c0f1caecac5b2a4"

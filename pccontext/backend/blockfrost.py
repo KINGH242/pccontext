@@ -12,7 +12,12 @@ from pycardano.address import Address
 from pycardano.backend.base import ProtocolParameters as PyCardanoProtocolParameters
 from pycardano.certificate import Anchor, DRep
 from pycardano.exception import TransactionFailedException
-from pycardano.governance import GovActionId, Vote
+from pycardano.governance import (
+    CommitteeColdCredential,
+    CommitteeHotCredential,
+    GovActionId,
+    Vote,
+)
 from pycardano.hash import (
     SCRIPT_HASH_SIZE,
     AnchorDataHash,
@@ -56,10 +61,12 @@ from pycardano.transaction import (
 from pycardano.types import JsonDict
 
 from pccontext.backend import ChainContext
-from pccontext.enums import DRepStatus, Era, Network, PoolStatus
+from pccontext.enums import CommitteeMemberStatus, DRepStatus, Era, Network, PoolStatus
 from pccontext.exceptions import BlockfrostError, PoolMetadataError
 from pccontext.models import (
     ChainTip,
+    CommitteeMemberInfo,
+    CommitteeStateInfo,
     CommitteeVote,
     DRepInfo,
     DRepStakeEntry,
@@ -1152,6 +1159,116 @@ class BlockFrostChainContext(ChainContext):
                 self._gov_action_votes(self._proposal_detail(gov_action_id.encode()))
             )
         return results
+
+    # -- Constitutional committee -----------------------------------------
+
+    def _committee_member(self, member: Any, epoch: int) -> CommitteeMemberInfo:
+        """Build a committee member from one Blockfrost committee entry."""
+        cold = hot = None
+        cold_hex = getattr(member, "cc_cold_hex", None)
+        hot_hex = getattr(member, "cc_hot_hex", None)
+        if cold_hex:
+            payload = bytes.fromhex(cold_hex)
+            cold = CommitteeColdCredential(
+                ScriptHash(payload)
+                if getattr(member, "cc_cold_has_script", False)
+                else VerificationKeyHash(payload)
+            )
+        if hot_hex:
+            payload = bytes.fromhex(hot_hex)
+            hot = CommitteeHotCredential(
+                ScriptHash(payload)
+                if getattr(member, "cc_hot_has_script", False)
+                else VerificationKeyHash(payload)
+            )
+
+        expiration = getattr(member, "expiration_epoch", None)
+        expiration = None if expiration is None else int(expiration)
+        # Blockfrost reports "authorized", "not_authorized" or "resigned". A
+        # term runs to the end of its expiration epoch, so a member is EXPIRED
+        # only once the chain is past it. Otherwise an authorised member is
+        # ACTIVE, and anything else is not a recognised voter.
+        if expiration is not None and expiration < epoch:
+            status = CommitteeMemberStatus.EXPIRED
+        elif str(getattr(member, "status", "")).lower() == "authorized":
+            status = CommitteeMemberStatus.ACTIVE
+        else:
+            status = CommitteeMemberStatus.UNRECOGNIZED
+
+        return CommitteeMemberInfo(
+            cold_credential=cold,
+            hot_credential=hot,
+            expiration=expiration,
+            status=status,
+        )
+
+    def committee_state(self) -> CommitteeStateInfo:
+        """Get the full constitutional committee state.
+
+        Returns:
+            CommitteeStateInfo: Every member with its cold-to-hot authorisation
+            and term, plus the quorum threshold Blockfrost reports as a
+            numerator over a denominator. A dissolved committee reports no
+            members and no threshold.
+
+        Raises:
+            :class:`BlockfrostError`: When the committee cannot be fetched.
+        """
+        try:
+            committee = self.api.governance_committee()
+        except ApiError as e:
+            raise BlockfrostError(f"Failed to fetch the committee state. {e}") from e
+
+        quorum = getattr(committee, "quorum", None)
+        numerator = getattr(quorum, "numerator", None)
+        denominator = getattr(quorum, "denominator", None)
+        threshold = (
+            int(numerator) / int(denominator)
+            if numerator is not None and denominator
+            else None
+        )
+
+        epoch = self.epoch
+        return CommitteeStateInfo(
+            members=[
+                self._committee_member(m, epoch)
+                for m in (getattr(committee, "members", None) or [])
+            ],
+            threshold=threshold,
+        )
+
+    def committee_member_info(
+        self,
+        cold: Optional[CommitteeColdCredential] = None,
+        hot: Optional[CommitteeHotCredential] = None,
+    ) -> CommitteeMemberInfo:
+        """Get a constitutional committee member's authorisation and term.
+
+        Blockfrost reports the committee as a whole, so this filters that state
+        rather than issuing a per-member query.
+
+        Args:
+            cold (Optional[CommitteeColdCredential]): The member's cold
+                credential. Optional if ``hot`` is given.
+            hot (Optional[CommitteeHotCredential]): A hot credential the member
+                has authorised. Optional if ``cold`` is given.
+
+        Returns:
+            CommitteeMemberInfo: The matching member.
+
+        Raises:
+            ValueError: If neither credential is given, or no member matches.
+        """
+        if cold is None and hot is None:
+            raise ValueError("A cold or hot committee credential must be provided.")
+
+        for member in self.committee_state().members:
+            if cold is not None and member.cold_credential == cold:
+                return member
+            if hot is not None and member.hot_credential == hot:
+                return member
+
+        raise ValueError("No committee member matched the given credential.")
 
     def spo_stake_distribution(self) -> List[SPOStakeEntry]:
         """Get the stake delegated to each stake pool this epoch.

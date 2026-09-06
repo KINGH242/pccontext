@@ -19,7 +19,14 @@ from pycardano import (
 from pycardano.network import Network as PyCardanoNetwork
 
 from pccontext.backend.blockfrost import BlockFrostChainContext
-from pccontext.enums import DRepStatus, Era, GovActionStatus, Network, PoolStatus
+from pccontext.enums import (
+    CommitteeMemberStatus,
+    DRepStatus,
+    Era,
+    GovActionStatus,
+    Network,
+    PoolStatus,
+)
 from pccontext.exceptions import BlockfrostError, PoolMetadataError
 
 POOL_ID = "pool1escyjl60l930fswu54xvamlrn7r0r4chje5qp8uwku09j7x68x6"
@@ -764,17 +771,111 @@ class TestGovActionsAll:
 # -- Queries Blockfrost cannot answer -------------------------------------
 
 
-def test_unimplemented_queries_raise(context):
-    """What is left must keep raising rather than return an invented answer.
+COMMITTEE = {
+    "gov_action_id": "gov_action1abc",
+    "is_dissolved": False,
+    "quorum": {"numerator": 2, "denominator": 3},
+    "members": [
+        {
+            "cc_cold_hex": "34" * 28,
+            "cc_cold_has_script": False,
+            "cc_hot_hex": "56" * 28,
+            "cc_hot_has_script": False,
+            "status": "authorized",
+            "expiration_epoch": 726,
+        },
+        {
+            "cc_cold_hex": "78" * 28,
+            "cc_cold_has_script": True,
+            "cc_hot_hex": None,
+            "cc_hot_has_script": None,
+            "status": "resigned",
+            "expiration_epoch": 500,
+        },
+        {
+            "cc_cold_hex": "9a" * 28,
+            "cc_cold_has_script": False,
+            "cc_hot_hex": "bc" * 28,
+            "cc_hot_has_script": False,
+            "status": "authorized",
+            "expiration_epoch": 500,
+        },
+    ],
+}
 
-    `blockfrost-python` 0.7.0 wraps the DRep and proposal endpoints but no
-    committee endpoint, even though the Blockfrost API has
-    ``/governance/committee``.
-    """
-    with pytest.raises(NotImplementedError):
-        context.committee_member_info()
-    with pytest.raises(NotImplementedError):
-        context.committee_state()
+
+def _committee_ns():
+    return _ns(COMMITTEE)
+
+
+class TestCommittee:
+    """Backed by /governance/committee, which blockfrost-python wraps as of the
+    governance-committee branch."""
+
+    def test_members_and_threshold(self, context):
+        context.api.governance_committee.return_value = _committee_ns()
+        state = context.committee_state()
+        assert len(state.members) == 3
+        assert state.threshold == pytest.approx(2 / 3)
+
+    def test_status_mapping(self, context):
+        """A term runs to the end of its expiration epoch, so at epoch 500 a
+        member expiring in 500 is still serving; 726 is well ahead."""
+        context.api.governance_committee.return_value = _committee_ns()
+        members = context.committee_state().members
+        assert members[0].status == CommitteeMemberStatus.ACTIVE
+        assert members[1].status == CommitteeMemberStatus.UNRECOGNIZED
+        # expiration 500 against the fixture's epoch 500 -> still serving
+        assert members[2].status == CommitteeMemberStatus.ACTIVE
+
+    def test_expired_once_past_the_term(self, context):
+        info = dict(COMMITTEE)
+        info["members"] = [dict(COMMITTEE["members"][0], expiration_epoch=499)]
+        context.api.governance_committee.return_value = _ns(info)
+        assert (
+            context.committee_state().members[0].status == CommitteeMemberStatus.EXPIRED
+        )
+
+    def test_resigned_member_has_no_hot_credential(self, context):
+        context.api.governance_committee.return_value = _committee_ns()
+        assert context.committee_state().members[1].hot_credential is None
+
+    def test_dissolved_committee(self, context):
+        context.api.governance_committee.return_value = _ns(
+            {"is_dissolved": True, "quorum": None, "members": []}
+        )
+        state = context.committee_state()
+        assert state.members == []
+        assert state.threshold is None
+
+    def test_lookup_by_cold_credential(self, context):
+        context.api.governance_committee.return_value = _committee_ns()
+        target = context.committee_state().members[0]
+        found = context.committee_member_info(cold=target.cold_credential)
+        assert found.cold_credential == target.cold_credential
+
+    def test_lookup_by_hot_credential(self, context):
+        context.api.governance_committee.return_value = _committee_ns()
+        target = context.committee_state().members[0]
+        found = context.committee_member_info(hot=target.hot_credential)
+        assert found.hot_credential == target.hot_credential
+
+    def test_requires_a_credential(self, context):
+        with pytest.raises(ValueError, match="cold or hot"):
+            context.committee_member_info()
+
+    def test_no_match_raises(self, context):
+        from pycardano import CommitteeColdCredential, VerificationKeyHash
+
+        context.api.governance_committee.return_value = _committee_ns()
+        stranger = CommitteeColdCredential(VerificationKeyHash(b"\xff" * 28))
+        with pytest.raises(ValueError, match="No committee member matched"):
+            context.committee_member_info(cold=stranger)
+
+    def test_api_failure_is_wrapped(self, context):
+        context.api.governance_committee.side_effect = _api_error(500)
+        with pytest.raises(BlockfrostError):
+            context.committee_state()
 
 
 class TestEra:

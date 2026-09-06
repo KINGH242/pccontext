@@ -1,6 +1,9 @@
 from fractions import Fraction
 
-from pccontext.models.protocol_parameters_model import ProtocolParameters
+from pccontext.models.protocol_parameters_model import (
+    ProtocolParameters,
+    cost_model_to_pycardano,
+)
 
 
 def test_from_json_blockfrost(blockfrost_protocol_parameters):
@@ -529,3 +532,50 @@ def test_to_json(cli_protocol_parameters_json):
     protocol_params = ProtocolParameters.from_json(cli_protocol_parameters_json)
     result = protocol_params.to_json()
     assert isinstance(result, str)
+
+
+def test_cost_model_to_pycardano_keys_a_list_by_position():
+    costs = cost_model_to_pycardano([10, 20, 30])
+
+    assert list(costs.items()) == [("0", 10), ("1", 20), ("2", 30)]
+
+
+def test_cost_model_to_pycardano_keys_sort_into_ledger_order():
+    """CostModels sorts keys for Plutus V1, so positional keys must be fixed width."""
+    model = list(range(350))
+
+    costs = cost_model_to_pycardano(model)
+
+    assert [costs[key] for key in sorted(costs)] == model
+    assert list(costs.values()) == model
+
+
+def test_cost_model_to_pycardano_keeps_dict_order():
+    costs = cost_model_to_pycardano({"addInteger-cpu": 1, "addInteger-mem": 2})
+
+    assert list(costs.values()) == [1, 2]
+
+
+def test_cost_model_to_pycardano_without_a_model():
+    assert cost_model_to_pycardano(None) is None
+
+
+def test_to_pycardano_cost_models_are_indexable(cli_protocol_parameters_json):
+    """pycardano reads each language's costs as a mapping, not as a bare list."""
+    protocol_params = ProtocolParameters.from_json(cli_protocol_parameters_json)
+
+    cost_models = protocol_params.to_pycardano().cost_models
+
+    assert set(cost_models) <= {"PlutusV1", "PlutusV2", "PlutusV3"}
+    for costs in cost_models.values():
+        assert isinstance(costs, dict)
+        assert [costs[key] for key in sorted(costs)] == list(costs.values())
+
+
+def test_to_pycardano_normalises_language_names():
+    protocol_params = ProtocolParameters(cost_models={"plutus:v3": [1, 2, 3]})
+
+    cost_models = protocol_params.to_pycardano().cost_models
+
+    assert list(cost_models) == ["PlutusV3"]
+    assert list(cost_models["PlutusV3"].values()) == [1, 2, 3]

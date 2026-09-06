@@ -60,6 +60,43 @@ class CostModels(BaseModel):
         }
 
 
+#: Language names cost models arrive under, mapped onto the ``PlutusV<n>`` keys pycardano's
+#: :class:`~pycardano.txbuilder.TransactionBuilder` looks them up by.
+PLUTUS_LANGUAGE_ALIASES = {
+    "plutus_v1": "PlutusV1",
+    "plutusv1": "PlutusV1",
+    "plutus:v1": "PlutusV1",
+    "plutus_v2": "PlutusV2",
+    "plutusv2": "PlutusV2",
+    "plutus:v2": "PlutusV2",
+    "plutus_v3": "PlutusV3",
+    "plutusv3": "PlutusV3",
+    "plutus:v3": "PlutusV3",
+}
+
+
+def cost_model_to_pycardano(
+    cost_model: Optional[Union[Dict[Union[str, int], int], List[int]]],
+) -> Optional[Dict[str, int]]:
+    """Put one language's cost model into the shape pycardano serializes.
+
+    :class:`pycardano.plutus.CostModels` emits only the *values* of each language's model, in
+    key order -- sorted for Plutus V1, insertion order otherwise. Chain backends hand us the
+    costs as a bare list in ledger order, so the keys have to be positional and fixed width;
+    that way sorting them lexicographically and iterating them give the same, correct order.
+
+    :param cost_model: A language's costs, either as an ordered list or as a name-keyed dict.
+    :return: The costs keyed by zero-padded position, or ``None`` if there were none.
+    """
+    if cost_model is None:
+        return None
+    costs = (
+        list(cost_model.values()) if isinstance(cost_model, dict) else list(cost_model)
+    )
+    width = len(str(len(costs) - 1)) if costs else 1
+    return {str(position).zfill(width): cost for position, cost in enumerate(costs)}
+
+
 @dataclass(frozen=True)
 class DRepVotingThresholds(BaseModel):
     committee_no_confidence: Optional[float] = field(
@@ -1070,12 +1107,19 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
         Convert the protocol parameters to PyCardano protocol parameters
         :return: The PyCardano protocol parameters
         """
-        cost_models: Dict = {}
+        raw_cost_models: Dict = {}
         if self.cost_models:
             if isinstance(self.cost_models, CostModels):
-                cost_models = self.cost_models.to_dict()
+                raw_cost_models = self.cost_models.to_dict()
             elif isinstance(self.cost_models, dict):
-                cost_models = self.cost_models
+                raw_cost_models = self.cost_models
+
+        cost_models: Dict = {}
+        for language, model in raw_cost_models.items():
+            costs = cost_model_to_pycardano(model)
+            if costs:
+                name = str(language)
+                cost_models[PLUTUS_LANGUAGE_ALIASES.get(name.lower(), name)] = costs
 
         return PyCardanoProtocolParameters(
             min_fee_constant=self.min_fee_constant,

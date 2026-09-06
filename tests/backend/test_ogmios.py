@@ -33,7 +33,12 @@ class TestOgmiosChainContext:
                 protocol_param.collateral_percent
                 == ogmios_protocol_parameters["collateralPercentage"]
             )
-            assert protocol_param.cost_models == {
+            # pycardano indexes each language's costs by key, so they arrive as an ordered
+            # mapping rather than the bare list ogmios reports.
+            assert {
+                language: list(costs.values())
+                for language, costs in protocol_param.cost_models.items()
+            } == {
                 "PlutusV1": ogmios_protocol_parameters["plutusCostModels"]["plutus:v1"],
                 "PlutusV2": ogmios_protocol_parameters["plutusCostModels"]["plutus:v2"],
                 "PlutusV3": ogmios_protocol_parameters["plutusCostModels"]["plutus:v3"],

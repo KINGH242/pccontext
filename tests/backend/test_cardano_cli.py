@@ -1251,3 +1251,58 @@ class TestCardanoCliGovernance:
         state = chain_context.committee_state()
 
         assert state.members[0].hot_credential is None
+
+
+class TestReferenceScriptWrapping:
+    """`query utxo` has not always wrapped reference scripts the same way.
+
+    cardano-cli 8 double-wrapped `referenceScript.script.cborHex`; 11 wraps it once.
+    Unwrapping unconditionally corrupts the newer form, so a reference script never matches
+    the script it holds and every spend inlines the full script instead.
+    """
+
+    #: A tiny always-succeeds Plutus V3 program, singly wrapped as it hashes.
+    #: `45` is the CBOR bytestring header for the five flat bytes that follow.
+    SINGLE = "450101002499"
+
+    def test_single_wrapped_is_taken_as_is(self):
+        """cardano-cli 11: the cborHex already is the script."""
+        from pccontext.backend.cardano_cli import CardanoCliChainContext
+
+        script = CardanoCliChainContext._get_script(
+            {"script": {"type": "PlutusScriptV3", "cborHex": self.SINGLE}}
+        )
+
+        assert bytes(script).hex() == self.SINGLE
+
+    def test_double_wrapped_is_unwrapped_once(self):
+        """cardano-cli 8: one layer has to come off to reach the same script."""
+        import cbor2
+
+        from pccontext.backend.cardano_cli import CardanoCliChainContext
+
+        double = cbor2.dumps(bytes.fromhex(self.SINGLE)).hex()
+        assert double != self.SINGLE
+
+        script = CardanoCliChainContext._get_script(
+            {"script": {"type": "PlutusScriptV3", "cborHex": double}}
+        )
+
+        assert bytes(script).hex() == self.SINGLE
+
+    def test_both_wrappings_give_the_same_script_hash(self):
+        """The point of the detection: one script hash, whichever cli produced it."""
+        import cbor2
+        from pycardano import plutus_script_hash
+
+        from pccontext.backend.cardano_cli import CardanoCliChainContext
+
+        double = cbor2.dumps(bytes.fromhex(self.SINGLE)).hex()
+        a = CardanoCliChainContext._get_script(
+            {"script": {"type": "PlutusScriptV3", "cborHex": self.SINGLE}}
+        )
+        b = CardanoCliChainContext._get_script(
+            {"script": {"type": "PlutusScriptV3", "cborHex": double}}
+        )
+
+        assert plutus_script_hash(a) == plutus_script_hash(b)

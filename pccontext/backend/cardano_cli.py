@@ -127,6 +127,40 @@ class DockerConfig:
         self.host_socket = host_socket
 
 
+def _plutus_bytes(cbor_hex: str) -> bytes:
+    """The serialized Plutus script `cbor_hex` denotes, whichever wrapping the cli used.
+
+    A Plutus script hashes as one CBOR bytestring wrapping its flat-encoded program, and
+    that is the form :class:`pycardano.PlutusV3Script` and friends expect. But
+    ``query utxo`` has not always reported it that way: cardano-cli 8 wrapped the script
+    *twice* in ``referenceScript.script.cborHex``, while 11 wraps it once. Unwrapping
+    unconditionally corrupts the newer form and yields the wrong script hash, so a
+    reference script never matches the script it holds.
+
+    So the wrapping is detected rather than assumed: decode once, and if the result is
+    itself a CBOR bytestring the input was double-wrapped and the decoded value is the
+    script. Otherwise the input already is the script.
+
+    Args:
+        cbor_hex (str): The ``cborHex`` field of a reference script.
+
+    Returns:
+        bytes: The script in its canonical single-wrapped form.
+    """
+    raw = bytes.fromhex(cbor_hex)
+    try:
+        once = cbor2.loads(raw)
+    except Exception:  # noqa: BLE001 - not CBOR at all; take it as the script
+        return raw
+    if not isinstance(once, bytes):
+        return raw
+    try:
+        twice = cbor2.loads(once)
+    except Exception:  # noqa: BLE001 - `once` is the flat program, so `raw` was single
+        return raw
+    return once if isinstance(twice, bytes) else raw
+
+
 class CardanoCliChainContext(ChainContext):
     _binary: Path
     _socket: Optional[Path]
@@ -342,20 +376,11 @@ class CardanoCliChainContext(ChainContext):
         script_type = reference_script["script"]["type"]
         script_json: JsonDict = reference_script["script"]
         if script_type == "PlutusScriptV1":
-            v1script = PlutusV1Script(
-                cbor2.loads(bytes.fromhex(script_json["cborHex"]))
-            )
-            return v1script
+            return PlutusV1Script(_plutus_bytes(script_json["cborHex"]))
         elif script_type == "PlutusScriptV2":
-            v2script = PlutusV2Script(
-                cbor2.loads(bytes.fromhex(script_json["cborHex"]))
-            )
-            return v2script
+            return PlutusV2Script(_plutus_bytes(script_json["cborHex"]))
         elif script_type == "PlutusScriptV3":
-            v3script = PlutusV3Script(
-                cbor2.loads(bytes.fromhex(script_json["cborHex"]))
-            )
-            return v3script
+            return PlutusV3Script(_plutus_bytes(script_json["cborHex"]))
         else:
             return NativeScript.from_dict(script_json)
 

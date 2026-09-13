@@ -1,3 +1,9 @@
+## 0.8.1 (2026-09-13)
+
+### Fix
+
+- detect how cardano-cli wrapped a reference script
+
 ## 0.8.0 (2026-09-06)
 
 ### Feat

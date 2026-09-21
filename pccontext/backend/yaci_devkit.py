@@ -1,4 +1,9 @@
+import json
+import urllib.error
+import urllib.request
 from contextlib import contextmanager
+from dataclasses import replace
+from datetime import datetime
 from fractions import Fraction
 from typing import (
     Any,
@@ -12,8 +17,10 @@ from typing import (
     Union,
     cast,
 )
+from urllib.parse import urlsplit
 
 import cbor2
+import httpx
 from pycardano import (
     Anchor,
     AnchorDataHash,
@@ -38,6 +45,7 @@ from pycardano import (
     VrfKeyHash,
 )
 from pycardano.address import Address
+from pycardano.backend.base import GenesisParameters as PyCardanoGenesisParameters
 from pycardano.backend.base import ProtocolParameters as PyCardanoProtocolParameters
 from pycardano.hash import SCRIPT_HASH_SIZE, DatumHash, ScriptHash
 from pycardano.nativescript import NativeScript
@@ -62,7 +70,6 @@ from pycardano.transaction import (
 from yaci_client import Client
 from yaci_client.api.account_api import get_stake_account_details
 from yaci_client.api.address_service import get_utxos_1
-from yaci_client.api.block_service import get_latest_block
 from yaci_client.api.d_rep_service import (
     get_d_rep_de_registrations,
     get_d_rep_registrations,
@@ -84,8 +91,6 @@ from yaci_client.api.script_service import (
     get_script_json_by_hash,
 )
 from yaci_client.api.transaction_service import get_utxo as get_utxo_by_ref
-from yaci_client.api.tx_submission_service import submit_tx_1
-from yaci_client.api.utilities import evaluate_tx
 from yaci_client.errors import UnexpectedStatus
 from yaci_client.models import (
     AddressUtxo,
@@ -122,6 +127,7 @@ from pccontext.models import (
     StakePoolInfo,
     StakePoolVote,
 )
+from pccontext.models.protocol_parameters_model import cost_model_to_pycardano
 
 __all__ = ["YaciDevkitChainContext"]
 
@@ -131,6 +137,12 @@ _PAGE_SIZE = 100
 """Rows requested per page from Yaci's paginated list endpoints."""
 
 _MAX_PAGES = 1000
+
+#: Where DevKit serves its admin (cluster) API unless told otherwise.
+_ADMIN_PORT = 10000
+
+#: Ogmios' names for script purposes, where they differ from pycardano's redeemer tags.
+_OGMIOS_PURPOSES = {"withdraw": "withdrawal", "publish": "certificate"}
 """Hard stop on pagination, so a misbehaving endpoint cannot loop forever."""
 
 _ERA_BY_INDEX: Dict[int, Era] = {
@@ -201,11 +213,27 @@ class YaciDevkitChainContext(ChainContext):
     _genesis_param: Optional[GenesisParameters] = None
     _protocol_param: Optional[ProtocolParameters] = None
 
-    def __init__(self, api_url: str):
+    def __init__(self, api_url: str, admin_url: Optional[str] = None):
+        """
+        Args:
+            api_url (str): Yaci Store's root, e.g. ``http://localhost:8080``. A trailing
+                ``/api/v1`` is accepted and dropped, since every endpoint already carries it.
+            admin_url (Optional[str]): The DevKit admin (cluster) API, which is where genesis
+                comes from -- Yaci Store serves none. Defaults to port 10000 on the store's
+                host, which is where DevKit puts it.
+        """
+        api_url = api_url.rstrip("/")
+        if api_url.endswith("/api/v1"):
+            api_url = api_url[: -len("/api/v1")]
         self._api_url = api_url
+        if admin_url is None:
+            parts = urlsplit(api_url)
+            admin_url = f"{parts.scheme}://{parts.hostname}:{_ADMIN_PORT}"
+        self._admin_url = admin_url.rstrip("/")
         self.api = Client(base_url=api_url, raise_on_unexpected_status=True)
         self._epoch = None
         self._genesis_param = None
+        self._genesis_files: Dict[str, Dict[str, Any]] = {}
         self._protocol_param = None
 
     @property
@@ -251,7 +279,80 @@ class YaciDevkitChainContext(ChainContext):
             if not params:
                 raise ValueError("Failed to get protocol parameters.")
             self._protocol_param = ProtocolParameters.from_json(params.to_dict())
-        return self._protocol_param.to_pycardano()
+        param = self._protocol_param.to_pycardano()
+        # Yaci returns each cost model as a map sorted by operation name. The script data
+        # hash covers the costs in ledger order, which for Plutus V3 is not alphabetical,
+        # so a transaction built from the store's order is refused (PPViewHashesDontMatch).
+        # Genesis lists them in ledger order, and a devnet's cost models do not change.
+        return replace(param, cost_models=self._genesis_cost_models())
+
+    def _store_json(self, path: str) -> Optional[Dict[str, Any]]:
+        """GET a JSON document from Yaci Store without the generated models.
+
+        Raises:
+            :class:`UnexpectedStatus`: When the store answers anything but 200.
+        """
+        response = self.api.get_httpx_client().get(path)
+        if response.status_code != 200:
+            logger.error(f"GET {path} failed. Status: {response.status_code}")
+            raise UnexpectedStatus(response.status_code, response.content)
+        return cast(Optional[Dict[str, Any]], response.json())
+
+    def _admin_json(self, path: str) -> Dict[str, Any]:
+        """GET a JSON document from the DevKit admin API.
+
+        Raises:
+            httpx.HTTPError: When the admin API cannot be reached or refuses.
+        """
+        response = httpx.get(f"{self._admin_url}{path}", timeout=30)
+        response.raise_for_status()
+        return cast(Dict[str, Any], response.json())
+
+    def _genesis_file(self, era: str) -> Dict[str, Any]:
+        if era not in self._genesis_files:
+            self._genesis_files[era] = self._admin_json(
+                f"/local-cluster/api/admin/devnet/genesis/{era}"
+            )
+        return self._genesis_files[era]
+
+    def _genesis_cost_models(self) -> Dict[str, Dict[str, int]]:
+        """Every language's cost model in ledger order, as pycardano serializes them."""
+        models: Dict[str, Any] = dict(
+            self._genesis_file("alonzo").get("costModels", {})
+        )
+        v3 = self._genesis_file("conway").get("plutusV3CostModel")
+        if v3:
+            models["PlutusV3"] = v3
+        result: Dict[str, Dict[str, int]] = {}
+        for language, model in models.items():
+            costs = cost_model_to_pycardano(model)
+            if costs:
+                result[language] = costs
+        return result
+
+    @property
+    def genesis_param(self) -> PyCardanoGenesisParameters:
+        """Genesis parameters, from the DevKit admin API."""
+        if self._genesis_param is None:
+            genesis = GenesisParameters.from_genesis_files(
+                alonzo_genesis=self._genesis_file("alonzo"),
+                byron_genesis=self._genesis_file("byron"),
+                conway_genesis=self._genesis_file("conway"),
+                shelley_genesis=self._genesis_file("shelley"),
+            )
+            start = genesis.system_start
+            if isinstance(start, str):
+                start = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            self._genesis_param = replace(genesis, system_start=start)
+        return self._genesis_param.to_pycardano()
+
+    @property
+    def last_block_slot(self) -> int:
+        """The slot of the latest block Yaci has indexed."""
+        slot = _opt(self._latest_block().slot)
+        if slot is None:
+            raise ValueError("Yaci DevKit reported a latest block without a slot.")
+        return slot
 
     def _get_script(
         self, script_hash: str
@@ -299,9 +400,16 @@ class YaciDevkitChainContext(ChainContext):
         """
         utxos: List[UTxO] = []
 
-        try:
+        def fetch(page: int, count: int) -> Optional[List[Any]]:
             with self._client() as client:
-                results = get_utxos_1.sync(address=address, client=client)
+                return get_utxos_1.sync(
+                    address=address, client=client, page=page, count=count
+                )
+
+        # Every page: the endpoint returns ten rows unless asked for more, and a wallet
+        # with an eleventh UTxO would otherwise lose it without any error.
+        try:
+            results = self._paginate(fetch)
         except UnexpectedStatus as e:
             logger.error(f"Failed to get UTxOs for address {address}. Error: {e}")
             return utxos
@@ -314,38 +422,48 @@ class YaciDevkitChainContext(ChainContext):
             lovelace_amount = 0
             multi_assets = MultiAsset()
             for item in amount or []:
-                if item["unit"] == "lovelace":
-                    lovelace_amount = int(item["quantity"])
+                # `Amount` is a generated model, whose fields are attributes rather than
+                # keys; a plain mapping is accepted too.
+                if isinstance(item, dict):
+                    unit, quantity = item.get("unit"), item.get("quantity")
+                else:
+                    unit, quantity = _opt(item.unit), _opt(item.quantity)
+                if unit is None or quantity is None:
+                    continue
+                if unit == "lovelace":
+                    lovelace_amount = int(quantity)
                 else:
                     # The utxo contains Multi-asset
-                    data = bytes.fromhex(item["unit"])
+                    data = bytes.fromhex(unit)
                     policy_id = ScriptHash(data[:SCRIPT_HASH_SIZE])
                     asset_name = AssetName(data[SCRIPT_HASH_SIZE:])
 
                     if policy_id not in multi_assets:
                         multi_assets[policy_id] = Asset()
-                    multi_assets[policy_id][asset_name] = int(item["quantity"])
+                    multi_assets[policy_id][asset_name] = int(quantity)
 
             amount = Value(lovelace_amount, multi_assets)
 
+            # A field Yaci leaves out arrives as UNSET rather than None, and both mean absent.
+            inline_datum = _opt(result.inline_datum)
+            data_hash = _opt(result.data_hash)
+            reference_script_hash = _opt(result.reference_script_hash)
+
             datum_hash = (
-                DatumHash.from_primitive(result.data_hash)
-                if result.data_hash and result.inline_datum is None
+                DatumHash.from_primitive(data_hash)
+                if data_hash and inline_datum is None
                 else None
             )
-
-            datum = None
-
-            if hasattr(result, "inline_datum") and result.inline_datum is not None:
-                datum = RawCBOR(bytes.fromhex(str(result.inline_datum)))
-
-            script = None
-
-            if (
-                hasattr(result, "reference_script_hash")
-                and result.reference_script_hash
-            ):
-                script = self._get_script(result.reference_script_hash)
+            datum = (
+                RawCBOR(bytes.fromhex(str(inline_datum)))
+                if inline_datum is not None
+                else None
+            )
+            script = (
+                self._get_script(reference_script_hash)
+                if reference_script_hash
+                else None
+            )
 
             tx_out = TransactionOutput(
                 Address.from_primitive(address),
@@ -357,6 +475,24 @@ class YaciDevkitChainContext(ChainContext):
             utxos.append(UTxO(tx_in, tx_out))
 
         return utxos
+
+    def _post_cbor(self, path: str, body: bytes) -> Tuple[int, str]:
+        """POST a transaction to Yaci Store and return the status and body.
+
+        Through ``urllib`` rather than the generated client's ``httpx``: the store answers
+        these two endpoints with a repeated ``Transfer-Encoding`` header, which httpx
+        rejects as a protocol error before the response can be read.
+        """
+        request = urllib.request.Request(
+            f"{self._api_url}{path}",
+            data=body,
+            headers={"Content-Type": "application/cbor"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return response.status, response.read().decode()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode(errors="replace")
 
     def submit_tx_cbor(self, cbor: Union[bytes, str]) -> str:
         """Submit a transaction.
@@ -371,17 +507,16 @@ class YaciDevkitChainContext(ChainContext):
             :class:`TransactionFailedException`: When fails to submit the transaction.
         """
 
-        if isinstance(cbor, bytes):
-            cbor = cbor.decode("utf-8")
-
-        try:
-            with self._client() as client:
-                response: Optional[str] = submit_tx_1.sync(body=cbor, client=client)
-            return response or ""
-        except UnexpectedStatus as e:
+        # Posted directly rather than through `submit_tx_1`: the endpoint takes the raw
+        # transaction bytes and answers 202, where the generated client sends its argument
+        # as text and accepts only 200.
+        body = bytes.fromhex(cbor) if isinstance(cbor, str) else cbor
+        status, text = self._post_cbor("/api/v1/tx/submit", body)
+        if status not in (200, 202):
             raise TransactionFailedException(
-                f"Failed to submit transaction. Error code: {e.status_code}. Error message: {e.content}"
-            ) from e
+                f"Failed to submit transaction. Error code: {status}. Error message: {text}"
+            )
+        return cast(str, json.loads(text))
 
     def evaluate_tx_cbor(self, cbor: Union[bytes, str]) -> Dict[str, ExecutionUnits]:
         """Evaluate execution units of a transaction.
@@ -395,31 +530,25 @@ class YaciDevkitChainContext(ChainContext):
         Raises:
             :class:`TransactionFailedException`: When fails to evaluate the transaction.
         """
-        if isinstance(cbor, bytes):
-            cbor = cbor.decode("utf-8")
-
-        try:
-            with self._client() as client:
-                response: Optional[dict] = evaluate_tx.sync(body=cbor, client=client)
-        except UnexpectedStatus as e:
+        # Posted directly, for the reasons `submit_tx_cbor` gives. This endpoint takes the
+        # transaction as hex, and needs Ogmios enabled in the DevKit (`ogmios_enabled=true`).
+        body = cbor.hex() if isinstance(cbor, bytes) else cbor
+        status, text = self._post_cbor("/api/v1/utils/txs/evaluate", body.encode())
+        if status not in (200, 202):
             raise TransactionFailedException(
-                f"Failed to evaluate transaction. Error code: {e.status_code}. Error message: {e.content}"
-            ) from e
-
-        result: Optional[Dict[str, Any]] = (
-            cast(Dict[str, Any], response["result"]) if response else None
-        )
-
-        if not result or not result.get("EvaluationResult"):
+                f"Failed to evaluate transaction. Error code: {status}. Error message: {text}"
+            )
+        result: Dict[str, Any] = (json.loads(text) or {}).get("result") or {}
+        if not result.get("EvaluationResult"):
             raise TransactionFailedException(result)
-        else:
-            return {
-                k: ExecutionUnits(
-                    k["memory"],
-                    k["steps"],
-                )
-                for k in result["EvaluationResult"]
-            }
+        units: Dict[str, ExecutionUnits] = {}
+        for key, cost in result["EvaluationResult"].items():
+            # Ogmios names the purposes `withdraw` and `publish`; pycardano looks redeemers
+            # up under its own tag names.
+            purpose, _, index = key.partition(":")
+            purpose = _OGMIOS_PURPOSES.get(purpose, purpose)
+            units[f"{purpose}:{index}"] = ExecutionUnits(cost["memory"], cost["steps"])
+        return units
 
     def stake_address_info(self, stake_address: str) -> List[StakeAddressInfo]:
         """Get the stake address information.
@@ -490,16 +619,13 @@ class YaciDevkitChainContext(ChainContext):
             :class:`UnexpectedStatus`: When the query fails.
             ValueError: When Yaci reports no block at all.
         """
-        try:
-            with self._client() as client:
-                block: Optional[BlockDto] = get_latest_block.sync(client=client)
-        except UnexpectedStatus as e:
-            logger.error(f"Failed to get the latest block. Error: {e}")
-            raise
-
-        if block is None:
+        # Not `get_latest_block`: the generated model reads every nested object without a
+        # null check, and a Conway block has `nonce_vrf` and `leader_vrf` set to null.
+        # Dropping the nulls leaves them unset, which the model does handle.
+        body = self._store_json("/api/v1/blocks/latest")
+        if not body:
             raise ValueError("Yaci DevKit returned no latest block.")
-        return block
+        return BlockDto.from_dict({k: v for k, v in body.items() if v is not None})
 
     @property
     def era(self) -> Optional[Era]:

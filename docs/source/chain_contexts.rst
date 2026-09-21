@@ -243,6 +243,19 @@ which makes it the quickest way to exercise real transactions in tests.
 The devnet reports its own network parameters, so there is no ``network``
 argument. Yaci DevKit has no PyCardano equivalent.
 
+Two services are involved. ``api_url`` is Yaci Store; genesis, and the Plutus cost models
+in ledger order, come from the DevKit admin API, which is taken to be port 10000 on the
+same host unless ``admin_url`` says otherwise:
+
+.. code-block:: python
+
+   context = YaciDevkitChainContext(
+       api_url="http://localhost:8080", admin_url="http://localhost:10000"
+   )
+
+Building a transaction that runs a Plutus script needs the devnet started with Ogmios
+(``ogmios_enabled=true``), which is what Yaci Store evaluates scripts with.
+
 .. _ctx-offline-transfer-file:
 
 Offline transfer file

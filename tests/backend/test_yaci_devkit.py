@@ -1,4 +1,6 @@
 import contextlib
+import json
+from datetime import datetime, timezone
 from fractions import Fraction
 from unittest.mock import patch
 
@@ -11,6 +13,7 @@ from pycardano import (
     CommitteeHotCredential,
     DRep,
     DRepKind,
+    ExecutionUnits,
     GovActionId,
     MultiAsset,
     PoolKeyHash,
@@ -28,6 +31,7 @@ from pycardano import (
     Vote,
     VrfKeyHash,
 )
+from pycardano.exception import TransactionFailedException
 from yaci_client.models import (
     AddressUtxo,
     Amt,
@@ -50,7 +54,7 @@ from yaci_client.models import (
     VotingProcedureVoterType,
 )
 
-from pccontext import ProtocolParameters
+from pccontext import ProtocolParameters, YaciDevkitChainContext
 from pccontext.enums import DRepStatus, Era, PoolStatus
 from pccontext.models import ChainTip, CommitteeVote, DRepVote, StakePoolVote
 
@@ -64,34 +68,154 @@ class TestCardanoCliChainContext:
             assert yaci_devkit_chain_context.epoch == 100
 
     def test_protocol_param(self, yaci_devkit_chain_context, yaci_protocol_parameters):
-        with patch(
-            "yaci_client.api.local_epoch_service.get_latest_protocol_params.sync",
-            return_value=ProtocolParamsDto.from_dict(yaci_protocol_parameters),
+        with (
+            patch(
+                "yaci_client.api.local_epoch_service.get_latest_protocol_params.sync",
+                return_value=ProtocolParamsDto.from_dict(yaci_protocol_parameters),
+            ),
+            patch.object(
+                YaciDevkitChainContext, "_admin_json", side_effect=fake_admin_json
+            ),
         ):
             protocol_param = yaci_devkit_chain_context.protocol_param
-            expected_protocol_param = ProtocolParameters.from_json(
-                yaci_protocol_parameters
-            )
-            assert protocol_param == expected_protocol_param.to_pycardano()
+        expected = ProtocolParameters.from_json(yaci_protocol_parameters).to_pycardano()
+        # Everything the store reports is passed through...
+        assert protocol_param.min_fee_coefficient == expected.min_fee_coefficient
+        assert protocol_param.coins_per_utxo_byte == expected.coins_per_utxo_byte
+        assert protocol_param.max_tx_size == expected.max_tx_size
+        # ...except the cost models, which come from genesis in ledger order. The store
+        # sorts them by name, and for Plutus V3 that is not the order the ledger hashes.
+        assert list(protocol_param.cost_models["PlutusV3"].values()) == [30, 10, 20]
+        assert list(protocol_param.cost_models["PlutusV1"].values()) == [1, 2]
+        assert protocol_param.cost_models["PlutusV2"] == {"0": 3}
+
+    def test_reference_script_fee_tiers(
+        self, yaci_devkit_chain_context, yaci_protocol_parameters
+    ):
+        """pycardano charges nothing for reference scripts unless it is given the tiers."""
+        params = dict(yaci_protocol_parameters, min_fee_ref_script_cost_per_byte=15)
+        with (
+            patch(
+                "yaci_client.api.local_epoch_service.get_latest_protocol_params.sync",
+                return_value=ProtocolParamsDto.from_dict(params),
+            ),
+            patch.object(
+                YaciDevkitChainContext, "_admin_json", side_effect=fake_admin_json
+            ),
+        ):
+            protocol_param = yaci_devkit_chain_context.protocol_param
+        assert protocol_param.min_fee_reference_scripts == {
+            "base": 15,
+            "range": 25600,
+            "multiplier": 1.2,
+        }
+        assert protocol_param.maximum_reference_scripts_size == {"bytes": 204800}
+
+    def test_genesis_param(self, yaci_devkit_chain_context):
+        with patch.object(
+            YaciDevkitChainContext, "_admin_json", side_effect=fake_admin_json
+        ) as admin:
+            genesis = yaci_devkit_chain_context.genesis_param
+            again = yaci_devkit_chain_context.genesis_param
+        assert genesis.network_magic == 42
+        assert genesis.slot_length == 1
+        assert genesis.epoch_length == 600
+        started = datetime(2026, 9, 20, 22, 30, 36, tzinfo=timezone.utc)
+        assert genesis.system_start == int(started.timestamp())
+        assert again == genesis
+        assert admin.call_count == 4  # one request per era's genesis, then cached
+
+    def test_admin_url_defaults_to_port_10000_on_the_store_host(self):
+        context = YaciDevkitChainContext("http://devkit.example:8080/api/v1/")
+        assert context._api_url == "http://devkit.example:8080"
+        assert context._admin_url == "http://devkit.example:10000"
+        explicit = YaciDevkitChainContext("http://a:8080", admin_url="http://b:1234/")
+        assert explicit._admin_url == "http://b:1234"
 
     def test_utxo(self, yaci_devkit_chain_context, yaci_utxos):
         with patch(
             "yaci_client.api.address_service.get_utxos_1.sync",
-            return_value=[Utxo(**utxo) for utxo in yaci_utxos],
+            return_value=[Utxo.from_dict(utxo) for utxo in yaci_utxos],
         ):
-            results = yaci_devkit_chain_context.utxos(
-                "addr_test1qraen6hr9zs5yae8cxnhlkh7rk2nfl7rnpg0xvmel3a0xf70v3kz6ee7mtq86x6gmrnw8j7kuf485902akkr7tlcx24qemz34a"
-            )
+            results = yaci_devkit_chain_context.utxos(ADDRESS)
 
-        assert results[0].input == TransactionInput.from_primitive(
-            ["a6ce90a9a5ef8ef73858effdae375ba50f302d3c6c8b587a15eaa8fa98ddf741", 0]
-        )
+        assert results[0].input == TransactionInput.from_primitive([TX_HASH, 0])
         assert results[0].output == TransactionOutput(
-            address=Address.from_primitive(
-                "addr_test1qraen6hr9zs5yae8cxnhlkh7rk2nfl7rnpg0xvmel3a0xf70v3kz6ee7mtq86x6gmrnw8j7kuf485902akkr7tlcx24qemz34a"
-            ),
+            address=Address.from_primitive(ADDRESS),
             amount=Value(coin=10000000000, multi_asset=MultiAsset()),
         )
+
+    def test_utxos_reads_every_page(self, yaci_devkit_chain_context):
+        """The endpoint returns ten rows by default; an eleventh UTxO must not be lost."""
+        rows = [
+            Utxo.from_dict(
+                {
+                    "tx_hash": f"{i:064x}",
+                    "output_index": 0,
+                    "amount": [{"unit": "lovelace", "quantity": 1000000 + i}],
+                }
+            )
+            for i in range(150)
+        ]
+
+        def page(*, address, client, page, count):
+            return rows[page * count : (page + 1) * count]
+
+        with patch(
+            "yaci_client.api.address_service.get_utxos_1.sync", side_effect=page
+        ):
+            results = yaci_devkit_chain_context.utxos(ADDRESS)
+        assert [u.output.amount.coin for u in results] == [
+            1000000 + i for i in range(150)
+        ]
+
+    def test_submit_posts_raw_bytes_and_accepts_202(self, yaci_devkit_chain_context):
+        with patch.object(
+            YaciDevkitChainContext, "_post_cbor", return_value=(202, f'"{TX_HASH}"')
+        ) as post:
+            assert yaci_devkit_chain_context.submit_tx_cbor("84a400") == TX_HASH
+            assert yaci_devkit_chain_context.submit_tx_cbor(b"\x84\xa4\x00") == TX_HASH
+        assert [c.args for c in post.call_args_list] == [
+            ("/api/v1/tx/submit", b"\x84\xa4\x00")
+        ] * 2
+
+    def test_submit_failure_carries_the_ledger_message(self, yaci_devkit_chain_context):
+        with patch.object(
+            YaciDevkitChainContext, "_post_cbor", return_value=(400, "FeeTooSmallUTxO")
+        ):
+            with pytest.raises(TransactionFailedException, match="FeeTooSmallUTxO"):
+                yaci_devkit_chain_context.submit_tx_cbor("84a400")
+
+    def test_evaluate_maps_ogmios_purposes(self, yaci_devkit_chain_context):
+        body = json.dumps(
+            {
+                "result": {
+                    "EvaluationResult": {
+                        "spend:0": {"memory": 10, "steps": 20},
+                        "withdraw:0": {"memory": 30, "steps": 40},
+                        "publish:1": {"memory": 50, "steps": 60},
+                    }
+                }
+            }
+        )
+        with patch.object(
+            YaciDevkitChainContext, "_post_cbor", return_value=(202, body)
+        ) as post:
+            units = yaci_devkit_chain_context.evaluate_tx_cbor(b"\x84\xa4\x00")
+        assert post.call_args.args == ("/api/v1/utils/txs/evaluate", b"84a400")
+        assert units == {
+            "spend:0": ExecutionUnits(10, 20),
+            "withdrawal:0": ExecutionUnits(30, 40),
+            "certificate:1": ExecutionUnits(50, 60),
+        }
+
+    def test_evaluate_failure_raises(self, yaci_devkit_chain_context):
+        body = json.dumps({"result": {"EvaluationFailure": {"code": 3010}}})
+        with patch.object(
+            YaciDevkitChainContext, "_post_cbor", return_value=(200, body)
+        ):
+            with pytest.raises(TransactionFailedException):
+                yaci_devkit_chain_context.evaluate_tx_cbor("84a400")
 
 
 POOL_ID_HEX = "cc30497f4ff962f4c1dca54cceefe39f86f1d7179668009f8eb71e59"
@@ -123,30 +247,64 @@ def _proposal(index=0, epoch=12):
     )
 
 
+#: The latest block as a Conway devnet really returns it: the VRF objects the generated
+#: `BlockDto` reads without a null check are null.
+LATEST_BLOCK = {
+    "slot": 4242,
+    "hash": "ab" * 32,
+    "number": 77,
+    "height": 77,
+    "epoch": 3,
+    "era": 7,
+    "nonce_vrf": None,
+    "leader_vrf": None,
+}
+
+
+def fake_admin_json(path):
+    """The DevKit admin API's genesis documents, cut down to what is read."""
+    era = path.rsplit("/", 1)[-1]
+    return {
+        "byron": {},
+        "shelley": {
+            "systemStart": "2026-09-20T22:30:36Z",
+            "networkMagic": 42,
+            "slotLength": 1,
+            "epochLength": 600,
+            "activeSlotsCoeff": 1.0,
+            "securityParam": 100,
+            "maxKESEvolutions": 60,
+            "maxLovelaceSupply": 45000000000000000,
+            "slotsPerKESPeriod": 129600,
+            "updateQuorum": 1,
+        },
+        # V1 as the name-keyed map Alonzo genesis may use, V2 as a list.
+        "alonzo": {"costModels": {"PlutusV1": {"a-op": 1, "b-op": 2}, "PlutusV2": [3]}},
+        # Ledger order, deliberately not sorted.
+        "conway": {"plutusV3CostModel": [30, 10, 20]},
+    }[era]
+
+
 class TestYaciDevkitChainState:
     def test_era(self, yaci_devkit_chain_context):
-        with patch(
-            "yaci_client.api.block_service.get_latest_block.sync",
-            return_value=BlockDto(era=7),
+        with patch.object(
+            YaciDevkitChainContext, "_store_json", return_value={"era": 7}
         ):
             assert yaci_devkit_chain_context.era is Era.CONWAY
 
     def test_era_unknown_index_is_none(self, yaci_devkit_chain_context):
         """An era index outside the known range must not be guessed at."""
-        with patch(
-            "yaci_client.api.block_service.get_latest_block.sync",
-            return_value=BlockDto(era=99),
+        with patch.object(
+            YaciDevkitChainContext, "_store_json", return_value={"era": 99}
         ):
             assert yaci_devkit_chain_context.era is None
 
     def test_chain_tip(self, yaci_devkit_chain_context):
-        with patch(
-            "yaci_client.api.block_service.get_latest_block.sync",
-            return_value=BlockDto(
-                slot=4242, hash_="ab" * 32, number=77, height=77, epoch=3, era=7
-            ),
+        with patch.object(
+            YaciDevkitChainContext, "_store_json", return_value=LATEST_BLOCK
         ):
             tip = yaci_devkit_chain_context.chain_tip
+            assert yaci_devkit_chain_context.last_block_slot == 4242
 
         assert tip == ChainTip(
             slot=4242, hash="ab" * 32, block=77, epoch=3, era=Era.CONWAY
@@ -155,9 +313,7 @@ class TestYaciDevkitChainState:
         assert tip.sync_progress is None
 
     def test_chain_tip_raises_when_no_block(self, yaci_devkit_chain_context):
-        with patch(
-            "yaci_client.api.block_service.get_latest_block.sync", return_value=None
-        ):
+        with patch.object(YaciDevkitChainContext, "_store_json", return_value=None):
             with pytest.raises(ValueError):
                 _ = yaci_devkit_chain_context.chain_tip
 
@@ -672,9 +828,8 @@ class TestClientIsReusable:
     """
 
     def test_two_sequential_queries_on_one_context(self, yaci_devkit_chain_context):
-        with patch(
-            "yaci_client.api.block_service.get_latest_block.sync",
-            return_value=BlockDto(era=7),
+        with patch.object(
+            YaciDevkitChainContext, "_store_json", return_value={"era": 7}
         ):
             assert yaci_devkit_chain_context.era is Era.CONWAY
             # The second call is the one that used to fail.
@@ -683,9 +838,8 @@ class TestClientIsReusable:
     def test_the_underlying_httpx_client_is_never_closed(
         self, yaci_devkit_chain_context
     ):
-        with patch(
-            "yaci_client.api.block_service.get_latest_block.sync",
-            return_value=BlockDto(era=7),
+        with patch.object(
+            YaciDevkitChainContext, "_store_json", return_value={"era": 7}
         ):
             _ = yaci_devkit_chain_context.era
         assert not yaci_devkit_chain_context.api.get_httpx_client().is_closed

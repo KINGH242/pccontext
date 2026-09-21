@@ -1,3 +1,10 @@
+## 0.8.2 (2026-09-21)
+
+### Fix
+
+- make the Yaci DevKit context work against a live devnet
+- expand the reference-script fee for pycardano and keep nested model values
+
 ## 0.8.1 (2026-09-13)
 
 ### Fix

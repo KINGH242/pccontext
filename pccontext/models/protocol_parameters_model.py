@@ -75,6 +75,14 @@ PLUTUS_LANGUAGE_ALIASES = {
 }
 
 
+#: Reference-script fee tiers (Conway). The price of the first tier is the protocol
+#: parameter `minFeeRefScriptCostPerByte`; each further tier of this many bytes costs this
+#: much more, and a transaction may reference at most this many bytes of script.
+REF_SCRIPT_TIER_BYTES = 25_600
+REF_SCRIPT_TIER_GROWTH = 1.2
+MAX_REF_SCRIPTS_BYTES = 200 * 1024
+
+
 def cost_model_to_pycardano(
     cost_model: Optional[Union[Dict[Union[str, int], int], List[int]]],
 ) -> Optional[Dict[str, int]]:
@@ -1121,6 +1129,30 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
                 name = str(language)
                 cost_models[PLUTUS_LANGUAGE_ALIASES.get(name.lower(), name)] = costs
 
+        # pycardano prices reference scripts from `{"base", "range", "multiplier"}` and a
+        # `{"bytes"}` size limit, and charges nothing when either is missing or not a
+        # mapping -- so the bare per-byte price most services report has to be expanded.
+        # Only the base price is a protocol parameter; the rest are Conway ledger constants.
+        # A service that already reports them in full (Ogmios) is passed through as is.
+        per_byte: Any = self.min_fee_ref_script_cost_per_byte
+        max_size: Any = self.max_reference_scripts_size
+        min_fee_reference_scripts: Optional[Dict[str, Any]] = None
+        maximum_reference_scripts_size: Optional[Dict[str, Any]] = None
+        if isinstance(per_byte, dict):
+            min_fee_reference_scripts = per_byte
+        elif per_byte is not None:
+            min_fee_reference_scripts = {
+                "base": per_byte,
+                "range": REF_SCRIPT_TIER_BYTES,
+                "multiplier": REF_SCRIPT_TIER_GROWTH,
+            }
+        if isinstance(max_size, dict):
+            maximum_reference_scripts_size = max_size
+        elif min_fee_reference_scripts is not None:
+            maximum_reference_scripts_size = {
+                "bytes": max_size or MAX_REF_SCRIPTS_BYTES
+            }
+
         return PyCardanoProtocolParameters(
             min_fee_constant=self.min_fee_constant,
             min_fee_coefficient=self.min_fee_coefficient,
@@ -1160,6 +1192,6 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
             coins_per_utxo_word=self.coins_per_utxo_word,
             coins_per_utxo_byte=self.coins_per_utxo_byte or self.utxo_cost_per_byte,
             cost_models=cost_models,
-            maximum_reference_scripts_size=self.max_reference_scripts_size,
-            min_fee_reference_scripts=self.min_fee_ref_script_cost_per_byte,
+            maximum_reference_scripts_size=maximum_reference_scripts_size,
+            min_fee_reference_scripts=min_fee_reference_scripts,
         )

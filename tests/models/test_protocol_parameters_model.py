@@ -579,3 +579,53 @@ def test_to_pycardano_normalises_language_names():
 
     assert list(cost_models) == ["PlutusV3"]
     assert list(cost_models["PlutusV3"].values()) == [1, 2, 3]
+
+
+def test_reference_script_fee_is_expanded_for_pycardano():
+    """pycardano prices reference scripts from the tiers and charges nothing without them."""
+    bare = ProtocolParameters.from_json(
+        {"min_fee_ref_script_cost_per_byte": 15}
+    ).to_pycardano()
+    assert bare.min_fee_reference_scripts == {
+        "base": 15,
+        "range": 25600,
+        "multiplier": 1.2,
+    }
+    assert bare.maximum_reference_scripts_size == {"bytes": 204800}
+
+    # Reported in full already, as Ogmios does: passed through untouched.
+    full = ProtocolParameters(
+        min_fee_ref_script_cost_per_byte={"base": 44, "range": 1000, "multiplier": 2},
+        max_reference_scripts_size={"bytes": 5000},
+    ).to_pycardano()
+    assert full.min_fee_reference_scripts == {
+        "base": 44,
+        "range": 1000,
+        "multiplier": 2,
+    }
+    assert full.maximum_reference_scripts_size == {"bytes": 5000}
+
+    # Pre-Conway parameters carry neither, and stay that way.
+    none = ProtocolParameters.from_json({"min_fee_a": 44}).to_pycardano()
+    assert none.min_fee_reference_scripts is None
+    assert none.maximum_reference_scripts_size is None
+
+
+def test_name_keyed_cost_models_are_kept():
+    """A service may report cost models as operation-name maps, with no raw lists."""
+    named = {"PlutusV2": {"a-op": 1, "b-op": 2}}
+    params = ProtocolParameters.from_json({"cost_models": named}).to_pycardano()
+    assert list(params.cost_models["PlutusV2"].values()) == [1, 2]
+
+
+def test_a_null_alias_does_not_erase_the_value_of_another():
+    """`cost_models` and `cost_models_raw` fill one field; Yaci sends the second as null."""
+    params = ProtocolParameters.from_json(
+        {"cost_models": {"PlutusV2": {"a-op": 1}}, "cost_models_raw": None}
+    ).to_pycardano()
+    assert list(params.cost_models["PlutusV2"].values()) == [1]
+    # The raw lists still win when a service sends both, as Blockfrost does.
+    both = ProtocolParameters.from_json(
+        {"cost_models": {"PlutusV2": {"a-op": 1}}, "cost_models_raw": {"PlutusV2": [9]}}
+    ).to_pycardano()
+    assert list(both.cost_models["PlutusV2"].values()) == [9]

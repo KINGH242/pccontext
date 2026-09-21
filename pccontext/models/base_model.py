@@ -37,7 +37,11 @@ class BaseModel:
 
     @classmethod
     def property_from_dict(cls: Type[T], value, key, field_name, init_args: Dict):
+        # Returned, not only stored: `from_dict` assigns whatever this returns, so a bare
+        # `None` here silently dropped every nested mapping of a model without an override
+        # -- a name-keyed cost model, for one.
         init_args[field_name] = value
+        return value
 
     @classmethod
     def clean_unwanted_fields(cls: Type[T], init_args: Dict):
@@ -92,6 +96,10 @@ class BaseModel:
 
             cls.clean_unwanted_fields(init_args)
 
+            # Several keys can alias one field (`cost_models` and `cost_models_raw`). A
+            # service that sends one of them as null must not erase the other's value.
+            if v is None and init_args.get(field_name) is not None:
+                continue
             init_args[field_name] = v
 
         # Backends return more than any one model needs — Koios' chain tip

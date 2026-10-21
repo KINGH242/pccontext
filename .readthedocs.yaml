@@ -8,6 +8,7 @@ build:
     python: "3.13"
   jobs:
     # uv builds the docs environment from uv.lock, into the environment Read the Docs builds in.
+    # autodoc imports pccontext, so the project and its dependencies are installed with the docs group.
     pre_create_environment:
       - asdf plugin add uv
       - asdf install uv latest
@@ -15,7 +16,7 @@ build:
     create_environment:
       - uv venv "${READTHEDOCS_VIRTUALENV_PATH}"
     install:
-      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --frozen --only-group docs --no-install-project
+      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --frozen --no-default-groups --group docs
 
 sphinx:
   configuration: docs/source/conf.py

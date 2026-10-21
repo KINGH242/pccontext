@@ -246,7 +246,7 @@ class YaciDevkitChainContext(ChainContext):
         return Network.TESTNET
 
     @contextmanager
-    def _client(self) -> Generator[Client]:
+    def _client(self) -> Generator[Client, None, None]:
         """Hand out the generated API client for the duration of one request.
 
         The generated ``Client`` is itself a context manager, but entering it

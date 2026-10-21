@@ -31,7 +31,8 @@ dependencies = [
     # pycardano. 0.7.0 is the floor: it adds the governance and network_eras
     # endpoints that backend uses.
     "blockfrost-python>=0.7.0,<1.0.0",
-    "yaci-client>=1.0,<2.0",
+    # 1.0.1 allows httpx 0.28 and declares its real floors (httpx 0.25.1, attrs 22.2).
+    "yaci-client>=1.0.1,<2.0",
 ]
 
 [project.urls]

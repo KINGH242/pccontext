@@ -23,17 +23,9 @@ def _update_witness_set(
     if witness_set_attr is None:
         return new_witnesses
 
-    if isinstance(new_witnesses, list):
-        if isinstance(witness_set_attr, list):
-            witness_set_attr.extend(new_witnesses)
-        else:
-            witness_set_attr.extend(list(new_witnesses))
-    elif isinstance(new_witnesses, NonEmptyOrderedSet):
-        if isinstance(witness_set_attr, list):
-            witness_set_attr.extend(list(new_witnesses))
-        else:
-            witness_set_attr.extend(list(new_witnesses))
-
+    # Both containers support extend(); copy the new witnesses into a plain list so a
+    # NonEmptyOrderedSet is added as well as a list.
+    witness_set_attr.extend(list(new_witnesses))
     return witness_set_attr
 
 
@@ -73,12 +65,19 @@ def assemble_transaction(
         )
 
     if bootstrap_witness:
-        transaction.transaction_witness_set.bootstrap_witness.extend(bootstrap_witness)
+        witness_set = transaction.transaction_witness_set
+        if witness_set.bootstrap_witness is None:
+            witness_set.bootstrap_witness = list(bootstrap_witness)
+        else:
+            witness_set.bootstrap_witness.extend(bootstrap_witness)
 
     if plutus_data:
-        transaction.transaction_witness_set.plutus_data = _update_witness_set(
-            transaction.transaction_witness_set.plutus_data, plutus_data
-        )
+        # Plutus data may also be an IndefiniteList, which the witness helper does not take.
+        witness_set = transaction.transaction_witness_set
+        if witness_set.plutus_data is None:
+            witness_set.plutus_data = plutus_data
+        else:
+            witness_set.plutus_data.extend(list(plutus_data))
 
     if redeemer:
         transaction.transaction_witness_set.redeemer = redeemer

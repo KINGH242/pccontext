@@ -7,11 +7,11 @@ Installation
 
    pip install pccontext
 
-Or with Poetry:
+Or with uv:
 
 .. code-block:: bash
 
-   poetry add pccontext
+   uv add pccontext
 
 PyCardano is installed as a dependency, so you do not need to require it
 separately unless you import from it directly.

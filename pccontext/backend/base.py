@@ -99,9 +99,7 @@ class ChainContext(BaseChainContext):
         Returns:
             List[StakeAddressInfo]: The stake address information.
         """
-        raise NotImplementedError(
-            f"stake_address_info is not implemented for {self.name}."
-        )
+        raise NotImplementedError(f"stake_address_info is not implemented for {self.name}.")
 
     # -- Stake pools ------------------------------------------------------
 
@@ -128,9 +126,7 @@ class ChainContext(BaseChainContext):
         Returns:
             StakePoolInfo: The pool's information.
         """
-        raise NotImplementedError(
-            f"stake_pool_info is not implemented for {self.name}."
-        )
+        raise NotImplementedError(f"stake_pool_info is not implemented for {self.name}.")
 
     def kes_period_info(
         self,
@@ -149,9 +145,7 @@ class ChainContext(BaseChainContext):
             KESPeriodInfo: The current KES period and the counters needed to
             decide whether the certificate should be rotated.
         """
-        raise NotImplementedError(
-            f"kes_period_info is not implemented for {self.name}."
-        )
+        raise NotImplementedError(f"kes_period_info is not implemented for {self.name}.")
 
     # -- Treasury ---------------------------------------------------------
 
@@ -181,9 +175,7 @@ class ChainContext(BaseChainContext):
         Returns:
             GovActionInfo: The action's information.
         """
-        raise NotImplementedError(
-            f"gov_action_info is not implemented for {self.name}."
-        )
+        raise NotImplementedError(f"gov_action_info is not implemented for {self.name}.")
 
     def gov_action_votes(self, gov_action_id: GovActionId) -> GovActionVotes:
         """Get the votes recorded against a governance action, by voter class.
@@ -195,9 +187,7 @@ class ChainContext(BaseChainContext):
             GovActionVotes: The proposal procedure and the committee, DRep and
             stake pool votes.
         """
-        raise NotImplementedError(
-            f"gov_action_votes is not implemented for {self.name}."
-        )
+        raise NotImplementedError(f"gov_action_votes is not implemented for {self.name}.")
 
     def gov_actions_all(self) -> List[GovActionVotes]:
         """Get every active governance proposal with its votes.
@@ -208,9 +198,7 @@ class ChainContext(BaseChainContext):
         Returns:
             List[GovActionVotes]: One entry per active proposal.
         """
-        raise NotImplementedError(
-            f"gov_actions_all is not implemented for {self.name}."
-        )
+        raise NotImplementedError(f"gov_actions_all is not implemented for {self.name}.")
 
     def committee_member_info(
         self,
@@ -228,9 +216,7 @@ class ChainContext(BaseChainContext):
         Returns:
             CommitteeMemberInfo: The member's information.
         """
-        raise NotImplementedError(
-            f"committee_member_info is not implemented for {self.name}."
-        )
+        raise NotImplementedError(f"committee_member_info is not implemented for {self.name}.")
 
     def committee_state(self) -> CommitteeStateInfo:
         """Get the full constitutional committee state.
@@ -239,9 +225,7 @@ class ChainContext(BaseChainContext):
             CommitteeStateInfo: Every member with its cold-to-hot authorization
             and term expiration, plus the active quorum threshold.
         """
-        raise NotImplementedError(
-            f"committee_state is not implemented for {self.name}."
-        )
+        raise NotImplementedError(f"committee_state is not implemented for {self.name}.")
 
     # -- Stake distributions ----------------------------------------------
 
@@ -251,9 +235,7 @@ class ChainContext(BaseChainContext):
         Returns:
             List[DRepStakeEntry]: One entry per DRep.
         """
-        raise NotImplementedError(
-            f"drep_stake_distribution is not implemented for {self.name}."
-        )
+        raise NotImplementedError(f"drep_stake_distribution is not implemented for {self.name}.")
 
     def spo_stake_distribution(self) -> List[SPOStakeEntry]:
         """Get the stake delegated to each stake pool this epoch.
@@ -261,6 +243,4 @@ class ChainContext(BaseChainContext):
         Returns:
             List[SPOStakeEntry]: One entry per pool.
         """
-        raise NotImplementedError(
-            f"spo_stake_distribution is not implemented for {self.name}."
-        )
+        raise NotImplementedError(f"spo_stake_distribution is not implemented for {self.name}.")

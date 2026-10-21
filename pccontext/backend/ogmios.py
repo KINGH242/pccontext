@@ -172,17 +172,13 @@ class OgmiosChainContext(ChainContext):
         self._service_name = "ogmios"
         self._last_known_block_slot = 0
         self._refetch_chain_tip_interval = (
-            refetch_chain_tip_interval
-            if refetch_chain_tip_interval is not None
-            else DEFAULT_REFETCH_INTERVAL
+            refetch_chain_tip_interval if refetch_chain_tip_interval is not None else DEFAULT_REFETCH_INTERVAL
         )
         self._last_chain_tip_fetch = 0
         self._genesis_param = None
         self._protocol_param = None
 
-        self._utxo_cache = TTLCache(
-            ttl=self._refetch_chain_tip_interval, maxsize=utxo_cache_size
-        )
+        self._utxo_cache = TTLCache(ttl=self._refetch_chain_tip_interval, maxsize=utxo_cache_size)
         self._datum_cache = LRUCache(maxsize=datum_cache_size)
 
         self._ogmios: Optional[pyogmios.Client] = client
@@ -246,13 +242,9 @@ class OgmiosChainContext(ChainContext):
         height = self.client.network.block_height()
         return 0 if height == "origin" else height
 
-    def _query_stake_pools(
-        self, pool_ids: Optional[List[str]] = None
-    ) -> Dict[str, ot.StakePoolView]:
+    def _query_stake_pools(self, pool_ids: Optional[List[str]] = None) -> Dict[str, ot.StakePoolView]:
         if pool_ids:
-            return self.client.ledger_state.stake_pools(
-                stake_pools=[{"id": pool_id} for pool_id in pool_ids]
-            )
+            return self.client.ledger_state.stake_pools(stake_pools=[{"id": pool_id} for pool_id in pool_ids])
         # An empty filter selects no pool at all: leave it out for every pool.
         return self.client.ledger_state.stake_pools()
 
@@ -290,9 +282,7 @@ class OgmiosChainContext(ChainContext):
             registered DRep plus the two predefined options; the predefined
             options are returned whether or not a filter is given.
         """
-        return self.client.ledger_state.delegate_representatives(
-            keys=keys or None, scripts=scripts or None
-        )
+        return self.client.ledger_state.delegate_representatives(keys=keys or None, scripts=scripts or None)
 
     def _query_governance_proposals(
         self, proposals: Optional[List[Dict[str, Any]]] = None
@@ -304,9 +294,7 @@ class OgmiosChainContext(ChainContext):
         return self.client.ledger_state.utxo(addresses=[address])
 
     def _query_utxos_by_tx_id(self, tx_id: str, index: int) -> List[ot.UtxoItem]:
-        return self.client.ledger_state.utxo(
-            output_references=[{"transaction": {"id": tx_id}, "index": index}]
-        )
+        return self.client.ledger_state.utxo(output_references=[{"transaction": {"id": tx_id}, "index": index}])
 
     def _is_chain_tip_updated(self):
         # fetch at most every twenty seconds!
@@ -329,14 +317,10 @@ class OgmiosChainContext(ChainContext):
         return self._protocol_param.to_pycardano()
 
     def _fetch_protocol_param(self) -> ProtocolParameters:
-        return self._protocol_param_from_ogmios(
-            self.client.ledger_state.protocol_parameters()
-        )
+        return self._protocol_param_from_ogmios(self.client.ledger_state.protocol_parameters())
 
     @classmethod
-    def _protocol_param_from_ogmios(
-        cls, params: ot.ProtocolParameters
-    ) -> ProtocolParameters:
+    def _protocol_param_from_ogmios(cls, params: ot.ProtocolParameters) -> ProtocolParameters:
         """Convert Ogmios v7 protocol parameters to pccontext's model.
 
         Ratios are kept as exact fractions. The reference-script fee and size
@@ -352,9 +336,7 @@ class OgmiosChainContext(ChainContext):
         ref_size = params.max_reference_scripts_size_per_transaction
 
         # pycardano reads these two as mappings; see ProtocolParameters.to_pycardano.
-        max_reference_scripts_size: Any = (
-            {"bytes": ref_size.bytes} if ref_size else None
-        )
+        max_reference_scripts_size: Any = {"bytes": ref_size.bytes} if ref_size else None
         min_fee_reference_scripts: Any = (
             {
                 "range": ref_fee.range,
@@ -365,9 +347,7 @@ class OgmiosChainContext(ChainContext):
             else None
         )
         decentralization_param: Any = (
-            Fraction(params.federated_block_production_ratio)
-            if params.federated_block_production_ratio
-            else None
+            Fraction(params.federated_block_production_ratio) if params.federated_block_production_ratio else None
         )
 
         return ProtocolParameters(
@@ -377,59 +357,29 @@ class OgmiosChainContext(ChainContext):
             cost_models=cls._parse_cost_models(params.plutus_cost_models),
             d_rep_activity=params.delegate_representative_max_idle_time,
             d_rep_deposit=cls._ada(params.delegate_representative_deposit),
-            dvt_motion_no_confidence=cls._ratio_to_float(
-                dvt.no_confidence if dvt else None
-            ),
-            dvt_committee_normal=cls._ratio_to_float(
-                dvt.constitutional_committee.default if dvt else None
-            ),
+            dvt_motion_no_confidence=cls._ratio_to_float(dvt.no_confidence if dvt else None),
+            dvt_committee_normal=cls._ratio_to_float(dvt.constitutional_committee.default if dvt else None),
             dvt_committee_no_confidence=cls._ratio_to_float(
                 dvt.constitutional_committee.state_of_no_confidence if dvt else None
             ),
-            dvt_update_to_constitution=cls._ratio_to_float(
-                dvt.constitution if dvt else None
-            ),
-            dvt_hard_fork_initiation=cls._ratio_to_float(
-                dvt.hard_fork_initiation if dvt else None
-            ),
-            dvt_p_p_network_group=cls._ratio_to_float(
-                dvt.protocol_parameters_update.network if dvt else None
-            ),
-            dvt_p_p_economic_group=cls._ratio_to_float(
-                dvt.protocol_parameters_update.economic if dvt else None
-            ),
-            dvt_p_p_technical_group=cls._ratio_to_float(
-                dvt.protocol_parameters_update.technical if dvt else None
-            ),
-            dvt_p_p_gov_group=cls._ratio_to_float(
-                dvt.protocol_parameters_update.governance if dvt else None
-            ),
-            dvt_treasury_withdrawal=cls._ratio_to_float(
-                dvt.treasury_withdrawals if dvt else None
-            ),
-            pvt_motion_no_confidence=cls._ratio_to_float(
-                pvt.no_confidence if pvt else None
-            ),
-            pvt_committee_normal=cls._ratio_to_float(
-                pvt.constitutional_committee.default if pvt else None
-            ),
+            dvt_update_to_constitution=cls._ratio_to_float(dvt.constitution if dvt else None),
+            dvt_hard_fork_initiation=cls._ratio_to_float(dvt.hard_fork_initiation if dvt else None),
+            dvt_p_p_network_group=cls._ratio_to_float(dvt.protocol_parameters_update.network if dvt else None),
+            dvt_p_p_economic_group=cls._ratio_to_float(dvt.protocol_parameters_update.economic if dvt else None),
+            dvt_p_p_technical_group=cls._ratio_to_float(dvt.protocol_parameters_update.technical if dvt else None),
+            dvt_p_p_gov_group=cls._ratio_to_float(dvt.protocol_parameters_update.governance if dvt else None),
+            dvt_treasury_withdrawal=cls._ratio_to_float(dvt.treasury_withdrawals if dvt else None),
+            pvt_motion_no_confidence=cls._ratio_to_float(pvt.no_confidence if pvt else None),
+            pvt_committee_normal=cls._ratio_to_float(pvt.constitutional_committee.default if pvt else None),
             pvt_committee_no_confidence=cls._ratio_to_float(
                 pvt.constitutional_committee.state_of_no_confidence if pvt else None
             ),
-            pvt_hard_fork_initiation=cls._ratio_to_float(
-                pvt.hard_fork_initiation if pvt else None
-            ),
-            pvt_pp_security_group=cls._ratio_to_float(
-                pvt.protocol_parameters_update.security if pvt else None
-            ),
+            pvt_hard_fork_initiation=cls._ratio_to_float(pvt.hard_fork_initiation if pvt else None),
+            pvt_pp_security_group=cls._ratio_to_float(pvt.protocol_parameters_update.security if pvt else None),
             gov_action_deposit=cls._ada(params.governance_action_deposit),
             gov_action_lifetime=params.governance_action_lifetime,
             max_block_size=params.max_block_body_size.bytes,
-            max_tx_size=(
-                params.max_transaction_size.bytes
-                if params.max_transaction_size
-                else None
-            ),
+            max_tx_size=(params.max_transaction_size.bytes if params.max_transaction_size else None),
             max_block_header_size=params.max_block_header_size.bytes,
             max_block_ex_mem=block_units.memory if block_units else None,
             max_block_ex_steps=block_units.cpu if block_units else None,
@@ -477,9 +427,8 @@ class OgmiosChainContext(ChainContext):
                 and self._genesis_param.slot_length is not None
                 and self._genesis_param.active_slots_coefficient is not None
             ):
-                self._refetch_chain_tip_interval = (
-                    self._genesis_param.slot_length
-                    / float(self._genesis_param.active_slots_coefficient)
+                self._refetch_chain_tip_interval = self._genesis_param.slot_length / float(
+                    self._genesis_param.active_slots_coefficient
                 )
         return self._genesis_param.to_pycardano()
 
@@ -502,9 +451,7 @@ class OgmiosChainContext(ChainContext):
             system_start=genesis.start_time,
             slots_per_kes_period=genesis.slots_per_kes_period,
             slot_length=(
-                int(slot_length)
-                if slot_length.denominator == 1
-                else float(slot_length)  # type: ignore[arg-type]
+                int(slot_length) if slot_length.denominator == 1 else float(slot_length)  # type: ignore[arg-type]
             ),
             max_kes_evolutions=genesis.max_kes_evolutions,
             security_param=genesis.security_parameter,
@@ -550,10 +497,7 @@ class OgmiosChainContext(ChainContext):
         Returns:
             List[UTxO]: A list of UTxOs.
         """
-        return [
-            self._utxo_from_ogmios_result(result)
-            for result in self._query_utxos_by_address(address)
-        ]
+        return [self._utxo_from_ogmios_result(result) for result in self._query_utxos_by_address(address)]
 
     @classmethod
     def _utxo_from_ogmios_result(cls, utxo: ot.UtxoItem) -> UTxO:
@@ -570,19 +514,11 @@ class OgmiosChainContext(ChainContext):
 
         # An output carries either an inline datum or the hash of one, never both.
         datum = RawCBOR(bytes.fromhex(utxo.datum)) if utxo.datum else None
-        datum_hash = (
-            DatumHash.from_primitive(utxo.datum_hash)
-            if utxo.datum_hash and datum is None
-            else None
-        )
+        datum_hash = DatumHash.from_primitive(utxo.datum_hash) if utxo.datum_hash and datum is None else None
 
         tx_out = TransactionOutput(
             Address.from_primitive(utxo.address),
-            amount=(
-                Value(lovelace_amount, multi_assets)
-                if multi_assets
-                else lovelace_amount
-            ),
+            amount=(Value(lovelace_amount, multi_assets) if multi_assets else lovelace_amount),
             datum_hash=datum_hash,
             datum=datum,
             script=cls._script_from_ogmios(utxo.script) if utxo.script else None,
@@ -609,10 +545,7 @@ class OgmiosChainContext(ChainContext):
         }
         plutus_script = plutus_scripts.get(script.language)
         if plutus_script is None:
-            raise OgmiosError(
-                f"Unsupported script language {script.language!r}: pycardano has "
-                "no type for it yet."
-            )
+            raise OgmiosError(f"Unsupported script language {script.language!r}: pycardano has no type for it yet.")
         return plutus_script(bytes.fromhex(script.cbor))
 
     @classmethod
@@ -643,9 +576,7 @@ class OgmiosChainContext(ChainContext):
             return InvalidBefore(clause.slot)
         if kind == "before":
             return InvalidHereAfter(clause.slot)
-        raise OgmiosError(
-            f"Unsupported native script clause {kind!r}: pycardano has no type for it yet."
-        )
+        raise OgmiosError(f"Unsupported native script clause {kind!r}: pycardano has no type for it yet.")
 
     def utxo_by_tx_id(self, tx_id: str, index: int) -> Optional[UTxO]:
         utxos = self._query_utxos_by_tx_id(tx_id, index)
@@ -687,8 +618,7 @@ class OgmiosChainContext(ChainContext):
             tag = REDEEMER_PURPOSES.get(purpose)
             if tag is None:
                 raise OgmiosError(
-                    f"Unsupported redeemer purpose {purpose!r}: pycardano has no "
-                    "redeemer tag for it yet."
+                    f"Unsupported redeemer purpose {purpose!r}: pycardano has no redeemer tag for it yet."
                 )
             result_dict[f"{tag}:{result.validator.index}"] = ExecutionUnits(
                 mem=result.budget.memory,
@@ -726,13 +656,9 @@ class OgmiosChainContext(ChainContext):
         """
         staking_part = Address.from_primitive(stake_address).staking_part
         if isinstance(staking_part, ScriptHash):
-            results = self.client.ledger_state.reward_account_summaries(
-                scripts=[stake_address]
-            )
+            results = self.client.ledger_state.reward_account_summaries(scripts=[stake_address])
         else:
-            results = self.client.ledger_state.reward_account_summaries(
-                keys=[stake_address]
-            )
+            results = self.client.ledger_state.reward_account_summaries(keys=[stake_address])
 
         return [
             StakeAddressInfo(
@@ -830,10 +756,7 @@ class OgmiosChainContext(ChainContext):
         Returns:
             List[PoolOperator]: The registered pools.
         """
-        return [
-            PoolOperator.from_primitive(pool_id)
-            for pool_id in self._query_stake_pools()
-        ]
+        return [PoolOperator.from_primitive(pool_id) for pool_id in self._query_stake_pools()]
 
     def stake_pool_info(self, pool_id: str, strict: bool = False) -> StakePoolInfo:
         """Get a stake pool's registered parameters and stake figures.
@@ -873,9 +796,7 @@ class OgmiosChainContext(ChainContext):
         # Report the registered parameters without stake figures in that case
         # rather than failing the whole call.
         try:
-            performances: Optional[ot.StakePoolsPerformances] = (
-                self._query_stake_pools_performances()
-            )
+            performances: Optional[ot.StakePoolsPerformances] = self._query_stake_pools_performances()
         except Exception:
             performances = None
 
@@ -931,16 +852,13 @@ class OgmiosChainContext(ChainContext):
         """
         if pool is None:
             raise OgmiosError(
-                "Ogmios reports operational certificate counters by pool ID, so "
-                "a pool operator must be provided."
+                "Ogmios reports operational certificate counters by pool ID, so a pool operator must be provided."
             )
 
         pool_id = pool.encode()
         counters = self._query_operational_certificates()
         if pool_id not in counters:
-            raise OgmiosError(
-                f"No operational certificate counter found for pool: {pool_id}"
-            )
+            raise OgmiosError(f"No operational certificate counter found for pool: {pool_id}")
 
         on_chain = int(counters[pool_id])
         return KESPeriodInfo(
@@ -1006,9 +924,7 @@ class OgmiosChainContext(ChainContext):
                         stake=summary.stake.ada.lovelace,
                         status=DRepStatus.REGISTERED,
                     )
-            raise OgmiosError(
-                f"Ogmios did not report the {predefined} delegate representative."
-            )
+            raise OgmiosError(f"Ogmios did not report the {predefined} delegate representative.")
 
         if drep.credential is None:
             raise OgmiosError(f"DRep carries no credential to look up: {drep.kind}")
@@ -1025,9 +941,7 @@ class OgmiosChainContext(ChainContext):
                 continue
             return self._drep_info_from_summary(drep, summary, self.epoch)
 
-        return DRepInfo(
-            drep=drep, active=False, stake=0, status=DRepStatus.NOT_REGISTERED
-        )
+        return DRepInfo(drep=drep, active=False, stake=0, status=DRepStatus.NOT_REGISTERED)
 
     def gov_action_info(self, gov_action_id: GovActionId) -> GovActionInfo:
         """Get the lifecycle information for a governance action.
@@ -1090,10 +1004,7 @@ class OgmiosChainContext(ChainContext):
         Returns:
             List[GovActionVotes]: One entry per proposal the ledger still holds.
         """
-        return [
-            self._gov_action_votes(proposal)
-            for proposal in self._query_governance_proposals()
-        ]
+        return [self._gov_action_votes(proposal) for proposal in self._query_governance_proposals()]
 
     def committee_member_info(
         self,
@@ -1119,9 +1030,7 @@ class OgmiosChainContext(ChainContext):
                 matches.
         """
         if cold is None and hot is None:
-            raise OgmiosError(
-                "Either a cold or a hot committee credential must be given."
-            )
+            raise OgmiosError("Either a cold or a hot committee credential must be given.")
 
         committee = self._query_constitutional_committee()
         for raw_member in committee.members if committee else []:
@@ -1132,9 +1041,7 @@ class OgmiosChainContext(ChainContext):
                 continue
             return member
 
-        raise OgmiosError(
-            f"Committee member not found for credential: {cold if cold else hot}"
-        )
+        raise OgmiosError(f"Committee member not found for credential: {cold if cold else hot}")
 
     def committee_state(self) -> CommitteeStateInfo:
         """Get the full constitutional committee state.
@@ -1152,10 +1059,7 @@ class OgmiosChainContext(ChainContext):
         if committee is None:
             return CommitteeStateInfo(members=[], threshold=None)
         return CommitteeStateInfo(
-            members=[
-                self._committee_member_from_ogmios(member)
-                for member in committee.members
-            ],
+            members=[self._committee_member_from_ogmios(member) for member in committee.members],
             threshold=self._ratio_to_float(committee.quorum),
         )
 
@@ -1193,8 +1097,7 @@ class OgmiosChainContext(ChainContext):
         """
         stake_pools = self._query_stake_pools_performances().stake_pools
         return [
-            SPOStakeEntry(pool_id=pool_id, stake=summary.stake.ada.lovelace)
-            for pool_id, summary in stake_pools.items()
+            SPOStakeEntry(pool_id=pool_id, stake=summary.stake.ada.lovelace) for pool_id, summary in stake_pools.items()
         ]
 
     # -- Parsing helpers --------------------------------------------------
@@ -1230,15 +1133,9 @@ class OgmiosChainContext(ChainContext):
         raise OgmiosError(f"Unknown stake pool relay type: {relay.type}")
 
     @classmethod
-    def _pool_params_from_ogmios(
-        cls, pool_id: str, params: ot.StakePoolView
-    ) -> PoolParams:
+    def _pool_params_from_ogmios(cls, pool_id: str, params: ot.StakePoolView) -> PoolParams:
         """Convert an Ogmios stake pool entry to PyCardano pool parameters."""
-        if (
-            params.vrf_verification_key_hash is None
-            or params.margin is None
-            or params.reward_account is None
-        ):
+        if params.vrf_verification_key_hash is None or params.margin is None or params.reward_account is None:
             raise OgmiosError(f"Incomplete parameters for stake pool: {pool_id}")
         metadata = params.metadata
         pool_metadata = (
@@ -1258,10 +1155,7 @@ class OgmiosChainContext(ChainContext):
             cost=cls._ada(params.cost),
             margin=Fraction(params.margin),
             reward_account=RewardAccountHash(bytes(reward_account.to_primitive())),
-            pool_owners=[
-                VerificationKeyHash(bytes.fromhex(owner))
-                for owner in params.owners or []
-            ],
+            pool_owners=[VerificationKeyHash(bytes.fromhex(owner)) for owner in params.owners or []],
             relays=[cls._relay_from_ogmios(relay) for relay in params.relays or []],
             pool_metadata=pool_metadata,
         )
@@ -1275,13 +1169,9 @@ class OgmiosChainContext(ChainContext):
         return VerificationKeyHash(payload)
 
     @classmethod
-    def _committee_member_from_ogmios(
-        cls, member: ot.ConstitutionalCommitteeMember
-    ) -> CommitteeMemberInfo:
+    def _committee_member_from_ogmios(cls, member: ot.ConstitutionalCommitteeMember) -> CommitteeMemberInfo:
         """Convert an Ogmios constitutional committee member entry."""
-        cold_credential = CommitteeColdCredential(
-            credential=cls._credential_payload(member)
-        )
+        cold_credential = CommitteeColdCredential(credential=cls._credential_payload(member))
 
         delegate = member.delegate
         hot_credential = (
@@ -1305,9 +1195,7 @@ class OgmiosChainContext(ChainContext):
         if value is None:
             return None
         try:
-            return Anchor(
-                url=value.url, data_hash=AnchorDataHash(bytes.fromhex(value.hash))
-            )
+            return Anchor(url=value.url, data_hash=AnchorDataHash(bytes.fromhex(value.hash)))
         except (AssertionError, ValueError, TypeError):
             # A metadata hash that is not 32 bytes cannot be an anchor.
             return None
@@ -1357,9 +1245,7 @@ class OgmiosChainContext(ChainContext):
     def _proposal_gov_action_id(proposal: ot.GovernanceProposalState) -> GovActionId:
         """Read the action id from a proposal's ``proposal`` reference."""
         return GovActionId(
-            transaction_id=TransactionId(
-                bytes.fromhex(proposal.proposal.transaction.id)
-            ),
+            transaction_id=TransactionId(bytes.fromhex(proposal.proposal.transaction.id)),
             gov_action_index=proposal.proposal.index,
         )
 

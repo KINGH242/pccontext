@@ -44,13 +44,11 @@ def stake_address_registration_delegation_and_vote_delegation(
 
     drep = get_drep(drep_kind, drep_id)
 
-    stake_registration_delegation_and_vote_delegation_certificate = (
-        StakeRegistrationAndDelegationAndVoteDelegation(
-            stake_credential=stake_credential,
-            pool_keyhash=pool.pool_key_hash,
-            drep=drep,
-            coin=context.protocol_param.key_deposit,
-        )
+    stake_registration_delegation_and_vote_delegation_certificate = StakeRegistrationAndDelegationAndVoteDelegation(
+        stake_credential=stake_credential,
+        pool_keyhash=pool.pool_key_hash,
+        drep=drep,
+        coin=context.protocol_param.key_deposit,
     )
 
     stake_address = Address(staking_part=stake_vkey.hash(), network=context.network)
@@ -70,17 +68,14 @@ def stake_address_registration_delegation_and_vote_delegation(
             else ""
         )
         raise TransactionError(
-            f"Stake-Address: {str(stake_address)} is already registered on the chain!\n "
-            f"{delegation_info}"
+            f"Stake-Address: {str(stake_address)} is already registered on the chain!\n {delegation_info}"
         )
 
     builder = TransactionBuilder(context)
 
     builder.add_input_address(send_from_addr)
 
-    builder.certificates = [
-        stake_registration_delegation_and_vote_delegation_certificate
-    ]
+    builder.certificates = [stake_registration_delegation_and_vote_delegation_certificate]
 
     if signing_keys:
         return builder.build_and_sign(

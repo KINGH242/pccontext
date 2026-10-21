@@ -39,26 +39,14 @@ def _update_witness_set(
 
 def assemble_transaction(
     transaction: Transaction,
-    vkey_witnesses: Optional[
-        Union[List[VerificationKeyWitness], NonEmptyOrderedSet[VerificationKeyWitness]]
-    ] = None,
-    native_scripts: Optional[
-        Union[List[NativeScript], NonEmptyOrderedSet[NativeScript]]
-    ] = None,
+    vkey_witnesses: Optional[Union[List[VerificationKeyWitness], NonEmptyOrderedSet[VerificationKeyWitness]]] = None,
+    native_scripts: Optional[Union[List[NativeScript], NonEmptyOrderedSet[NativeScript]]] = None,
     bootstrap_witness: Optional[List[Any]] = None,
-    plutus_v1_script: Optional[
-        Union[List[PlutusV1Script], NonEmptyOrderedSet[PlutusV1Script]]
-    ] = None,
-    plutus_data: Optional[
-        Union[IndefiniteList, List[Any], NonEmptyOrderedSet[Any]]
-    ] = None,
+    plutus_v1_script: Optional[Union[List[PlutusV1Script], NonEmptyOrderedSet[PlutusV1Script]]] = None,
+    plutus_data: Optional[Union[IndefiniteList, List[Any], NonEmptyOrderedSet[Any]]] = None,
     redeemer: Optional[Redeemers] = None,
-    plutus_v2_script: Optional[
-        Union[List[PlutusV2Script], NonEmptyOrderedSet[PlutusV2Script]]
-    ] = None,
-    plutus_v3_script: Optional[
-        Union[List[PlutusV3Script], NonEmptyOrderedSet[PlutusV3Script]]
-    ] = None,
+    plutus_v2_script: Optional[Union[List[PlutusV2Script], NonEmptyOrderedSet[PlutusV2Script]]] = None,
+    plutus_v3_script: Optional[Union[List[PlutusV3Script], NonEmptyOrderedSet[PlutusV3Script]]] = None,
 ) -> Transaction:
     """
     Assembles a transaction with the provided transaction and witnesses.

@@ -13,9 +13,7 @@ def main():
 
     pool = PoolOperator.from_primitive("pool1...")
 
-    tx_id = TransactionId.from_primitive(
-        "a47d84fa99b600ef002e36fba4463acf3e68e863aac0e6ec06f1e360664db13c"
-    )
+    tx_id = TransactionId.from_primitive("a47d84fa99b600ef002e36fba4463acf3e68e863aac0e6ec06f1e360664db13c")
 
     adastat = BlockchainExplorer.ADASTAT.explorer()
     cardanoscan = BlockchainExplorer.CARDANOSCAN.explorer()

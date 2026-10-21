@@ -1,6 +1,6 @@
 import contextlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from fractions import Fraction
 from unittest.mock import patch
 
@@ -35,7 +35,6 @@ from pycardano.exception import TransactionFailedException
 from yaci_client.models import (
     AddressUtxo,
     Amt,
-    BlockDto,
     DRepRegistration,
     DRepRegistrationType,
     EpochNo,
@@ -45,14 +44,12 @@ from yaci_client.models import (
     PoolRegistration,
     PoolRetirement,
     ProtocolParamsDto,
-)
-from yaci_client.models import Relay as YaciRelay
-from yaci_client.models import (
     Utxo,
     VotingProcedure,
     VotingProcedureVote,
     VotingProcedureVoterType,
 )
+from yaci_client.models import Relay as YaciRelay
 
 from pccontext import ProtocolParameters, YaciDevkitChainContext
 from pccontext.enums import DRepStatus, Era, PoolStatus
@@ -73,9 +70,7 @@ class TestCardanoCliChainContext:
                 "yaci_client.api.local_epoch_service.get_latest_protocol_params.sync",
                 return_value=ProtocolParamsDto.from_dict(yaci_protocol_parameters),
             ),
-            patch.object(
-                YaciDevkitChainContext, "_admin_json", side_effect=fake_admin_json
-            ),
+            patch.object(YaciDevkitChainContext, "_admin_json", side_effect=fake_admin_json),
         ):
             protocol_param = yaci_devkit_chain_context.protocol_param
         expected = ProtocolParameters.from_json(yaci_protocol_parameters).to_pycardano()
@@ -89,9 +84,7 @@ class TestCardanoCliChainContext:
         assert list(protocol_param.cost_models["PlutusV1"].values()) == [1, 2]
         assert protocol_param.cost_models["PlutusV2"] == {"0": 3}
 
-    def test_reference_script_fee_tiers(
-        self, yaci_devkit_chain_context, yaci_protocol_parameters
-    ):
+    def test_reference_script_fee_tiers(self, yaci_devkit_chain_context, yaci_protocol_parameters):
         """pycardano charges nothing for reference scripts unless it is given the tiers."""
         params = dict(yaci_protocol_parameters, min_fee_ref_script_cost_per_byte=15)
         with (
@@ -99,9 +92,7 @@ class TestCardanoCliChainContext:
                 "yaci_client.api.local_epoch_service.get_latest_protocol_params.sync",
                 return_value=ProtocolParamsDto.from_dict(params),
             ),
-            patch.object(
-                YaciDevkitChainContext, "_admin_json", side_effect=fake_admin_json
-            ),
+            patch.object(YaciDevkitChainContext, "_admin_json", side_effect=fake_admin_json),
         ):
             protocol_param = yaci_devkit_chain_context.protocol_param
         assert protocol_param.min_fee_reference_scripts == {
@@ -112,15 +103,13 @@ class TestCardanoCliChainContext:
         assert protocol_param.maximum_reference_scripts_size == {"bytes": 204800}
 
     def test_genesis_param(self, yaci_devkit_chain_context):
-        with patch.object(
-            YaciDevkitChainContext, "_admin_json", side_effect=fake_admin_json
-        ) as admin:
+        with patch.object(YaciDevkitChainContext, "_admin_json", side_effect=fake_admin_json) as admin:
             genesis = yaci_devkit_chain_context.genesis_param
             again = yaci_devkit_chain_context.genesis_param
         assert genesis.network_magic == 42
         assert genesis.slot_length == 1
         assert genesis.epoch_length == 600
-        started = datetime(2026, 9, 20, 22, 30, 36, tzinfo=timezone.utc)
+        started = datetime(2026, 9, 20, 22, 30, 36, tzinfo=UTC)
         assert genesis.system_start == int(started.timestamp())
         assert again == genesis
         assert admin.call_count == 4  # one request per era's genesis, then cached
@@ -161,28 +150,18 @@ class TestCardanoCliChainContext:
         def page(*, address, client, page, count):
             return rows[page * count : (page + 1) * count]
 
-        with patch(
-            "yaci_client.api.address_service.get_utxos_1.sync", side_effect=page
-        ):
+        with patch("yaci_client.api.address_service.get_utxos_1.sync", side_effect=page):
             results = yaci_devkit_chain_context.utxos(ADDRESS)
-        assert [u.output.amount.coin for u in results] == [
-            1000000 + i for i in range(150)
-        ]
+        assert [u.output.amount.coin for u in results] == [1000000 + i for i in range(150)]
 
     def test_submit_posts_raw_bytes_and_accepts_202(self, yaci_devkit_chain_context):
-        with patch.object(
-            YaciDevkitChainContext, "_post_cbor", return_value=(202, f'"{TX_HASH}"')
-        ) as post:
+        with patch.object(YaciDevkitChainContext, "_post_cbor", return_value=(202, f'"{TX_HASH}"')) as post:
             assert yaci_devkit_chain_context.submit_tx_cbor("84a400") == TX_HASH
             assert yaci_devkit_chain_context.submit_tx_cbor(b"\x84\xa4\x00") == TX_HASH
-        assert [c.args for c in post.call_args_list] == [
-            ("/api/v1/tx/submit", b"\x84\xa4\x00")
-        ] * 2
+        assert [c.args for c in post.call_args_list] == [("/api/v1/tx/submit", b"\x84\xa4\x00")] * 2
 
     def test_submit_failure_carries_the_ledger_message(self, yaci_devkit_chain_context):
-        with patch.object(
-            YaciDevkitChainContext, "_post_cbor", return_value=(400, "FeeTooSmallUTxO")
-        ):
+        with patch.object(YaciDevkitChainContext, "_post_cbor", return_value=(400, "FeeTooSmallUTxO")):
             with pytest.raises(TransactionFailedException, match="FeeTooSmallUTxO"):
                 yaci_devkit_chain_context.submit_tx_cbor("84a400")
 
@@ -198,9 +177,7 @@ class TestCardanoCliChainContext:
                 }
             }
         )
-        with patch.object(
-            YaciDevkitChainContext, "_post_cbor", return_value=(202, body)
-        ) as post:
+        with patch.object(YaciDevkitChainContext, "_post_cbor", return_value=(202, body)) as post:
             units = yaci_devkit_chain_context.evaluate_tx_cbor(b"\x84\xa4\x00")
         assert post.call_args.args == ("/api/v1/utils/txs/evaluate", b"84a400")
         assert units == {
@@ -211,9 +188,7 @@ class TestCardanoCliChainContext:
 
     def test_evaluate_failure_raises(self, yaci_devkit_chain_context):
         body = json.dumps({"result": {"EvaluationFailure": {"code": 3010}}})
-        with patch.object(
-            YaciDevkitChainContext, "_post_cbor", return_value=(200, body)
-        ):
+        with patch.object(YaciDevkitChainContext, "_post_cbor", return_value=(200, body)):
             with pytest.raises(TransactionFailedException):
                 yaci_devkit_chain_context.evaluate_tx_cbor("84a400")
 
@@ -227,10 +202,7 @@ DREP_KEY_HASH = "aa" * 28
 DREP_SCRIPT_HASH = "bb" * 28
 CC_HOT_KEY_HASH = "cc" * 28
 TX_HASH = "a6ce90a9a5ef8ef73858effdae375ba50f302d3c6c8b587a15eaa8fa98ddf741"
-ADDRESS = (
-    "addr_test1qraen6hr9zs5yae8cxnhlkh7rk2nfl7rnpg0xvmel3a0xf70v3kz6ee7mtq86x6"
-    "gmrnw8j7kuf485902akkr7tlcx24qemz34a"
-)
+ADDRESS = "addr_test1qraen6hr9zs5yae8cxnhlkh7rk2nfl7rnpg0xvmel3a0xf70v3kz6ee7mtq86x6gmrnw8j7kuf485902akkr7tlcx24qemz34a"
 
 
 def _proposal(index=0, epoch=12):
@@ -287,28 +259,20 @@ def fake_admin_json(path):
 
 class TestYaciDevkitChainState:
     def test_era(self, yaci_devkit_chain_context):
-        with patch.object(
-            YaciDevkitChainContext, "_store_json", return_value={"era": 7}
-        ):
+        with patch.object(YaciDevkitChainContext, "_store_json", return_value={"era": 7}):
             assert yaci_devkit_chain_context.era is Era.CONWAY
 
     def test_era_unknown_index_is_none(self, yaci_devkit_chain_context):
         """An era index outside the known range must not be guessed at."""
-        with patch.object(
-            YaciDevkitChainContext, "_store_json", return_value={"era": 99}
-        ):
+        with patch.object(YaciDevkitChainContext, "_store_json", return_value={"era": 99}):
             assert yaci_devkit_chain_context.era is None
 
     def test_chain_tip(self, yaci_devkit_chain_context):
-        with patch.object(
-            YaciDevkitChainContext, "_store_json", return_value=LATEST_BLOCK
-        ):
+        with patch.object(YaciDevkitChainContext, "_store_json", return_value=LATEST_BLOCK):
             tip = yaci_devkit_chain_context.chain_tip
             assert yaci_devkit_chain_context.last_block_slot == 4242
 
-        assert tip == ChainTip(
-            slot=4242, hash="ab" * 32, block=77, epoch=3, era=Era.CONWAY
-        )
+        assert tip == ChainTip(slot=4242, hash="ab" * 32, block=77, epoch=3, era=Era.CONWAY)
         # Yaci reports no distance from the node's own tip.
         assert tip.sync_progress is None
 
@@ -351,10 +315,7 @@ class TestYaciDevkitUtxo:
         assert utxo.output.address == Address.from_primitive(ADDRESS)
         assert utxo.output.amount.coin == 1500000
         policy = ScriptHash(bytes.fromhex("d0" * 28))
-        assert (
-            utxo.output.amount.multi_asset[policy][AssetName(bytes.fromhex("abcdef"))]
-            == 7
-        )
+        assert utxo.output.amount.multi_asset[policy][AssetName(bytes.fromhex("abcdef"))] == 7
 
     def test_utxo_spent(self, yaci_devkit_chain_context):
         """Yaci keeps spent outputs, so absence from the live set means spent."""
@@ -372,15 +333,8 @@ class TestYaciDevkitUtxo:
         assert result[1] is True
 
     def test_utxo_unknown(self, yaci_devkit_chain_context):
-        with patch(
-            "yaci_client.api.transaction_service.get_utxo.sync", return_value=None
-        ):
-            assert (
-                yaci_devkit_chain_context.utxo(
-                    TransactionInput.from_primitive([TX_HASH, 9])
-                )
-                is None
-            )
+        with patch("yaci_client.api.transaction_service.get_utxo.sync", return_value=None):
+            assert yaci_devkit_chain_context.utxo(TransactionInput.from_primitive([TX_HASH, 9])) is None
 
 
 class TestYaciDevkitStakePools:
@@ -412,16 +366,12 @@ class TestYaciDevkitStakePools:
             ),
             patch(
                 "yaci_client.api.pool_service.get_retirements.sync",
-                return_value=[
-                    PoolRetirement(pool_id=POOL_ID_HEX, retirement_epoch=15, slot=20)
-                ],
+                return_value=[PoolRetirement(pool_id=POOL_ID_HEX, retirement_epoch=15, slot=20)],
             ),
         ):
             assert yaci_devkit_chain_context.stake_pools() == []
 
-    def test_stake_pools_keeps_retiring_and_deduplicates(
-        self, yaci_devkit_chain_context
-    ):
+    def test_stake_pools_keeps_retiring_and_deduplicates(self, yaci_devkit_chain_context):
         """A pool re-registering must appear once, and a future retirement keeps it."""
         later = PoolRegistration(
             pool_id=POOL_ID_HEX,
@@ -441,9 +391,7 @@ class TestYaciDevkitStakePools:
             ),
             patch(
                 "yaci_client.api.pool_service.get_retirements.sync",
-                return_value=[
-                    PoolRetirement(pool_id=POOL_ID_HEX, retirement_epoch=15, slot=40)
-                ],
+                return_value=[PoolRetirement(pool_id=POOL_ID_HEX, retirement_epoch=15, slot=40)],
             ),
         ):
             pools = yaci_devkit_chain_context.stake_pools()
@@ -477,12 +425,8 @@ class TestYaciDevkitStakePools:
         assert params.pledge == 100000000
         assert params.cost == 340000000
         assert params.margin == Fraction(3, 100)
-        assert params.reward_account == RewardAccountHash(
-            bytes(Address.decode(REWARD_ADDRESS).to_primitive())
-        )
-        assert params.pool_owners == [
-            VerificationKeyHash(bytes.fromhex(OWNER_KEY_HASH))
-        ]
+        assert params.reward_account == RewardAccountHash(bytes(Address.decode(REWARD_ADDRESS).to_primitive()))
+        assert params.pool_owners == [VerificationKeyHash(bytes.fromhex(OWNER_KEY_HASH))]
         assert params.relays == [SingleHostAddr(port=3001, ipv4="10.0.0.1")]
         assert params.pool_metadata == PoolMetadata(
             url="https://example.com/pool.json",
@@ -501,9 +445,7 @@ class TestYaciDevkitStakePools:
             ),
             patch(
                 "yaci_client.api.pool_service.get_retirements.sync",
-                return_value=[
-                    PoolRetirement(pool_id=POOL_ID_HEX, retirement_epoch=15, slot=20)
-                ],
+                return_value=[PoolRetirement(pool_id=POOL_ID_HEX, retirement_epoch=15, slot=20)],
             ),
         ):
             info = yaci_devkit_chain_context.stake_pool_info(POOL_ID_HEX)
@@ -617,9 +559,7 @@ class TestYaciDevkitDRepInfo:
 
 
 class TestYaciDevkitGovernance:
-    GOV_ACTION_ID = GovActionId(
-        transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
-    )
+    GOV_ACTION_ID = GovActionId(transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0)
 
     VOTES = [
         VotingProcedure(
@@ -691,8 +631,7 @@ class TestYaciDevkitGovernance:
                 return_value=[_proposal()],
             ),
             patch(
-                "yaci_client.api.gov_action_proposal_service."
-                "get_voting_procedures_for_gov_action_proposal.sync",
+                "yaci_client.api.gov_action_proposal_service.get_voting_procedures_for_gov_action_proposal.sync",
                 return_value=self.VOTES,
             ),
             patch(
@@ -712,9 +651,7 @@ class TestYaciDevkitGovernance:
 
         assert votes.committee_votes == [
             CommitteeVote(
-                voter=CommitteeHotCredential(
-                    VerificationKeyHash(bytes.fromhex(CC_HOT_KEY_HASH))
-                ),
+                voter=CommitteeHotCredential(VerificationKeyHash(bytes.fromhex(CC_HOT_KEY_HASH))),
                 vote=Vote.YES,
             )
         ]
@@ -727,19 +664,13 @@ class TestYaciDevkitGovernance:
                 vote=Vote.NO,
             ),
             DRepVote(
-                voter=DRep(
-                    DRepKind.SCRIPT_HASH, ScriptHash(bytes.fromhex(DREP_SCRIPT_HASH))
-                ),
+                voter=DRep(DRepKind.SCRIPT_HASH, ScriptHash(bytes.fromhex(DREP_SCRIPT_HASH))),
                 vote=Vote.ABSTAIN,
             ),
         ]
-        assert votes.stake_pool_votes == [
-            StakePoolVote(voter=POOL_ID_BECH32, vote=Vote.YES)
-        ]
+        assert votes.stake_pool_votes == [StakePoolVote(voter=POOL_ID_BECH32, vote=Vote.YES)]
 
-    def test_gov_action_votes_keeps_only_a_voter_s_latest_vote(
-        self, yaci_devkit_chain_context
-    ):
+    def test_gov_action_votes_keeps_only_a_voter_s_latest_vote(self, yaci_devkit_chain_context):
         recast = VotingProcedure(
             voter_type=VotingProcedureVoterType.DREP_KEY_HASH,
             voter_hash=DREP_KEY_HASH,
@@ -753,8 +684,7 @@ class TestYaciDevkitGovernance:
                 return_value=[_proposal()],
             ),
             patch(
-                "yaci_client.api.gov_action_proposal_service."
-                "get_voting_procedures_for_gov_action_proposal.sync",
+                "yaci_client.api.gov_action_proposal_service.get_voting_procedures_for_gov_action_proposal.sync",
                 return_value=[self.VOTES[1], recast],
             ),
             patch(
@@ -774,8 +704,7 @@ class TestYaciDevkitGovernance:
                 return_value=[_proposal(index=0), _proposal(index=1)],
             ),
             patch(
-                "yaci_client.api.gov_action_proposal_service."
-                "get_voting_procedures_for_gov_action_proposal.sync",
+                "yaci_client.api.gov_action_proposal_service.get_voting_procedures_for_gov_action_proposal.sync",
                 return_value=[],
             ),
             patch(
@@ -828,19 +757,13 @@ class TestClientIsReusable:
     """
 
     def test_two_sequential_queries_on_one_context(self, yaci_devkit_chain_context):
-        with patch.object(
-            YaciDevkitChainContext, "_store_json", return_value={"era": 7}
-        ):
+        with patch.object(YaciDevkitChainContext, "_store_json", return_value={"era": 7}):
             assert yaci_devkit_chain_context.era is Era.CONWAY
             # The second call is the one that used to fail.
             assert yaci_devkit_chain_context.era is Era.CONWAY
 
-    def test_the_underlying_httpx_client_is_never_closed(
-        self, yaci_devkit_chain_context
-    ):
-        with patch.object(
-            YaciDevkitChainContext, "_store_json", return_value={"era": 7}
-        ):
+    def test_the_underlying_httpx_client_is_never_closed(self, yaci_devkit_chain_context):
+        with patch.object(YaciDevkitChainContext, "_store_json", return_value={"era": 7}):
             _ = yaci_devkit_chain_context.era
         assert not yaci_devkit_chain_context.api.get_httpx_client().is_closed
 

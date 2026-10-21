@@ -54,42 +54,30 @@ from pccontext.models import (
 
 
 def test_offline_chain_context(offline_transfer_file):
-    chain_context = OfflineTransferFileContext(
-        offline_transfer_file=offline_transfer_file
-    )
+    chain_context = OfflineTransferFileContext(offline_transfer_file=offline_transfer_file)
     assert isinstance(chain_context.network, Network)
 
 
 def test_protocol_param(offline_transfer_file, cli_protocol_parameters_json):
-    chain_context = OfflineTransferFileContext(
-        offline_transfer_file=offline_transfer_file
-    )
-    expected_protocol_params = ProtocolParameters.from_json(
-        cli_protocol_parameters_json
-    )
+    chain_context = OfflineTransferFileContext(offline_transfer_file=offline_transfer_file)
+    expected_protocol_params = ProtocolParameters.from_json(cli_protocol_parameters_json)
     assert chain_context.protocol_param == expected_protocol_params.to_pycardano()
 
 
 def test_genesis(offline_transfer_file, fake_genesis_parameters_json):
-    chain_context = OfflineTransferFileContext(
-        offline_transfer_file=offline_transfer_file
-    )
+    chain_context = OfflineTransferFileContext(offline_transfer_file=offline_transfer_file)
     expected_genesis = GenesisParameters.from_json(fake_genesis_parameters_json)
     assert chain_context.genesis_param == expected_genesis.to_pycardano()
 
 
 @freeze_time("2024-11-2")
 def test_epoch(offline_transfer_file):
-    chain_context = OfflineTransferFileContext(
-        offline_transfer_file=offline_transfer_file
-    )
+    chain_context = OfflineTransferFileContext(offline_transfer_file=offline_transfer_file)
     assert chain_context.epoch == 519
 
 
 def test_era_is_an_era_enum(offline_transfer_file):
-    chain_context = OfflineTransferFileContext(
-        offline_transfer_file=offline_transfer_file
-    )
+    chain_context = OfflineTransferFileContext(offline_transfer_file=offline_transfer_file)
     assert chain_context.era is None or isinstance(chain_context.era, Era)
 
 
@@ -101,9 +89,7 @@ def test_submit_tx_envelope_uses_era_name(offline_transfer_file, monkeypatch):
     """
     written = {}
 
-    chain_context = OfflineTransferFileContext(
-        offline_transfer_file=offline_transfer_file
-    )
+    chain_context = OfflineTransferFileContext(offline_transfer_file=offline_transfer_file)
     monkeypatch.setattr(
         type(chain_context),
         "era",
@@ -114,9 +100,7 @@ def test_submit_tx_envelope_uses_era_name(offline_transfer_file, monkeypatch):
         lambda path, contents: written.update(path=path, contents=contents),
     )
 
-    tx = Transaction(
-        TransactionBody(inputs=[], outputs=[], fee=0), TransactionWitnessSet()
-    )
+    tx = Transaction(TransactionBody(inputs=[], outputs=[], fee=0), TransactionWitnessSet())
     chain_context.submit_tx_cbor(tx.to_cbor_hex())
 
     assert "Era." not in written["contents"]
@@ -198,13 +182,9 @@ def populated_transfer(
                 status=PoolStatus.REGISTERED,
             )
         ],
-        kes_period_infos=[
-            KESPeriodInfo(on_chain_op_cert_count=3, on_disk_op_cert_count=4)
-        ],
+        kes_period_infos=[KESPeriodInfo(on_chain_op_cert_count=3, on_disk_op_cert_count=4)],
         treasury=1_234_567,
-        drep_infos=[
-            DRepInfo(drep=drep, active=True, stake=99, status=DRepStatus.REGISTERED)
-        ],
+        drep_infos=[DRepInfo(drep=drep, active=True, stake=99, status=DRepStatus.REGISTERED)],
         gov_action_infos=[
             GovActionInfo(
                 gov_action_id=gov_action_id,
@@ -226,9 +206,7 @@ def populated_transfer(
                 gov_action_id=gov_action_id,
                 committee_votes=[CommitteeVote(voter=hot_credential, vote=Vote.YES)],
                 drep_votes=[DRepVote(voter=drep, vote=Vote.NO)],
-                stake_pool_votes=[
-                    StakePoolVote(voter=pool_operator.encode(), vote=Vote.ABSTAIN)
-                ],
+                stake_pool_votes=[StakePoolVote(voter=pool_operator.encode(), vote=Vote.ABSTAIN)],
                 deposit=100_000_000,
                 proposed_in=500,
             )
@@ -299,9 +277,7 @@ def test_utxo_resolves_a_captured_input(populated_context, fake_offline_transfer
 
 
 def test_utxo_returns_none_for_an_uncaptured_input(populated_context):
-    tx_input = TransactionInput(
-        transaction_id=TransactionId(bytes(range(1, 33))), index=7
-    )
+    tx_input = TransactionInput(transaction_id=TransactionId(bytes(range(1, 33))), index=7)
 
     assert populated_context.utxo(tx_input) is None
 
@@ -320,9 +296,9 @@ def test_stake_pool_info(populated_context, pool_operator, pool_params):
 
 def test_stake_pool_info_ignores_strict(populated_context, pool_operator):
     """Verifying metadata needs the network, so strict cannot change anything."""
-    assert populated_context.stake_pool_info(
-        pool_operator.encode(), strict=True
-    ) == populated_context.stake_pool_info(pool_operator.encode())
+    assert populated_context.stake_pool_info(pool_operator.encode(), strict=True) == populated_context.stake_pool_info(
+        pool_operator.encode()
+    )
 
 
 def test_stake_pool_info_unknown_pool_raises(populated_context):
@@ -367,14 +343,10 @@ def test_gov_action_info(populated_context, gov_action_id):
     assert info.expires_after == 520
 
 
-def test_gov_action_info_falls_back_to_the_votes_section(
-    populated_transfer, gov_action_id, tmp_path
-):
+def test_gov_action_info_falls_back_to_the_votes_section(populated_transfer, gov_action_id, tmp_path):
     """A capture that stored only the votes can still answer the lifecycle."""
     path = tmp_path / "votes-only.json"
-    path.write_text(
-        replace(populated_transfer, gov_action_infos=[]).to_json(), encoding="utf-8"
-    )
+    path.write_text(replace(populated_transfer, gov_action_infos=[]).to_json(), encoding="utf-8")
     context = OfflineTransferFileContext(offline_transfer_file=path)
 
     info = context.gov_action_info(gov_action_id)
@@ -394,9 +366,7 @@ def test_gov_action_votes(populated_context, gov_action_id, drep, hot_credential
 
 
 def test_gov_action_votes_unknown_action_raises(populated_context):
-    other = GovActionId(
-        transaction_id=TransactionId(bytes(range(1, 33))), gov_action_index=4
-    )
+    other = GovActionId(transaction_id=TransactionId(bytes(range(1, 33))), gov_action_index=4)
 
     with pytest.raises(OfflineTransferFileError, match="were not captured"):
         populated_context.gov_action_votes(other)
@@ -408,18 +378,14 @@ def test_gov_actions_all(populated_context, gov_action_id):
     assert [action.gov_action_id for action in actions] == [gov_action_id]
 
 
-def test_committee_member_info_by_cold_credential(
-    populated_context, cold_credential, hot_credential
-):
+def test_committee_member_info_by_cold_credential(populated_context, cold_credential, hot_credential):
     member = populated_context.committee_member_info(cold=cold_credential)
 
     assert member.hot_credential == hot_credential
     assert member.status == CommitteeMemberStatus.ACTIVE
 
 
-def test_committee_member_info_by_hot_credential(
-    populated_context, cold_credential, hot_credential
-):
+def test_committee_member_info_by_hot_credential(populated_context, cold_credential, hot_credential):
     member = populated_context.committee_member_info(hot=hot_credential)
 
     assert member.cold_credential == cold_credential
@@ -432,9 +398,7 @@ def test_committee_member_info_requires_a_credential(populated_context):
 
 def test_committee_member_info_unknown_credential_raises(populated_context):
     with pytest.raises(OfflineTransferFileError, match="No captured committee member"):
-        populated_context.committee_member_info(
-            cold=CommitteeColdCredential(VerificationKeyHash(bytes(range(5, 33))))
-        )
+        populated_context.committee_member_info(cold=CommitteeColdCredential(VerificationKeyHash(bytes(range(5, 33)))))
 
 
 def test_committee_state(populated_context, cold_credential):
@@ -445,9 +409,7 @@ def test_committee_state(populated_context, cold_credential):
 
 
 @freeze_time("2024-11-2")
-def test_committee_member_expires_once_the_chain_is_past_its_term(
-    populated_transfer, cold_credential, tmp_path
-):
+def test_committee_member_expires_once_the_chain_is_past_its_term(populated_transfer, cold_credential, tmp_path):
     """A term runs to the END of its expiration epoch.
 
     The capture recorded the member as ACTIVE; the epoch derived from genesis
@@ -485,26 +447,16 @@ def test_committee_member_expires_once_the_chain_is_past_its_term(
         path.write_text(transfer.to_json(), encoding="utf-8")
         return OfflineTransferFileContext(offline_transfer_file=path)
 
-    assert (
-        context_for(serving, "serving.json").committee_state().members[0].status
-        == CommitteeMemberStatus.ACTIVE
-    )
-    assert (
-        context_for(expired, "expired.json").committee_state().members[0].status
-        == CommitteeMemberStatus.EXPIRED
-    )
+    assert context_for(serving, "serving.json").committee_state().members[0].status == CommitteeMemberStatus.ACTIVE
+    assert context_for(expired, "expired.json").committee_state().members[0].status == CommitteeMemberStatus.EXPIRED
 
 
 def test_drep_stake_distribution(populated_context, drep):
-    assert populated_context.drep_stake_distribution() == [
-        DRepStakeEntry(drep=drep, stake=42)
-    ]
+    assert populated_context.drep_stake_distribution() == [DRepStakeEntry(drep=drep, stake=42)]
 
 
 def test_spo_stake_distribution(populated_context, pool_operator):
-    assert populated_context.spo_stake_distribution() == [
-        SPOStakeEntry(pool_id=pool_operator.encode(), stake=84)
-    ]
+    assert populated_context.spo_stake_distribution() == [SPOStakeEntry(pool_id=pool_operator.encode(), stake=84)]
 
 
 # ---------------------------------------------------------------------------
@@ -543,9 +495,7 @@ def test_legacy_file_missing_gov_action_infos(legacy_context, gov_action_id):
 
 
 def test_legacy_file_missing_committee_sections(legacy_context, cold_credential):
-    with pytest.raises(
-        OfflineTransferFileError, match="no 'committee_member_infos' section"
-    ):
+    with pytest.raises(OfflineTransferFileError, match="no 'committee_member_infos' section"):
         legacy_context.committee_member_info(cold=cold_credential)
 
 

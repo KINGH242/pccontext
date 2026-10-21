@@ -1,5 +1,5 @@
 import copy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from fractions import Fraction
 from typing import Any, Callable, Dict, List, Union
@@ -103,9 +103,7 @@ class FakeOgmios:
         if method not in self.results:
             raise AssertionError(f"unexpected request: {method}")
         result = self.results[method]
-        response["result"] = (
-            result(message.get("params")) if callable(result) else copy.deepcopy(result)
-        )
+        response["result"] = result(message.get("params")) if callable(result) else copy.deepcopy(result)
         return response
 
     def requests(self, method: str) -> List[Dict[str, Any]]:
@@ -188,10 +186,7 @@ class TestOgmiosConnection:
 
     def test_url_from_host_and_port(self):
         assert OgmiosChainContext("ogmios.local", 1338).url == "ws://ogmios.local:1338"
-        assert (
-            OgmiosChainContext("ogmios.example.com", 443, secure=True).url
-            == "wss://ogmios.example.com:443"
-        )
+        assert OgmiosChainContext("ogmios.example.com", 443, secure=True).url == "wss://ogmios.example.com:443"
 
     def test_the_client_is_created_lazily(self):
         context = OgmiosChainContext("localhost", 1337)
@@ -201,9 +196,7 @@ class TestOgmiosConnection:
 
 class TestOgmiosProtocolParameters:
     def test_protocol_param(self, context, fake_ogmios, ogmios_protocol_parameters):
-        fake_ogmios.results["queryLedgerState/protocolParameters"] = (
-            ogmios_protocol_parameters
-        )
+        fake_ogmios.results["queryLedgerState/protocolParameters"] = ogmios_protocol_parameters
 
         protocol_param = context.protocol_param
         params = ogmios_protocol_parameters
@@ -211,10 +204,7 @@ class TestOgmiosProtocolParameters:
         assert protocol_param.collateral_percent == params["collateralPercentage"]
         # pycardano indexes each language's costs by key, so they arrive as an ordered
         # mapping rather than the bare list ogmios reports.
-        assert {
-            language: list(costs.values())
-            for language, costs in protocol_param.cost_models.items()
-        } == {
+        assert {language: list(costs.values()) for language, costs in protocol_param.cost_models.items()} == {
             "PlutusV1": params["plutusCostModels"]["plutus:v1"],
             "PlutusV2": params["plutusCostModels"]["plutus:v2"],
             "PlutusV3": params["plutusCostModels"]["plutus:v3"],
@@ -228,45 +218,19 @@ class TestOgmiosProtocolParameters:
         assert protocol_param.treasury_expansion == Fraction(1, 5)
 
         assert protocol_param.max_block_size == params["maxBlockBodySize"]["bytes"]
-        assert (
-            protocol_param.max_block_header_size
-            == params["maxBlockHeaderSize"]["bytes"]
-        )
+        assert protocol_param.max_block_header_size == params["maxBlockHeaderSize"]["bytes"]
         assert protocol_param.max_tx_size == params["maxTransactionSize"]["bytes"]
-        assert (
-            protocol_param.max_tx_ex_mem
-            == params["maxExecutionUnitsPerTransaction"]["memory"]
-        )
-        assert (
-            protocol_param.max_tx_ex_steps
-            == params["maxExecutionUnitsPerTransaction"]["cpu"]
-        )
-        assert (
-            protocol_param.max_block_ex_mem
-            == params["maxExecutionUnitsPerBlock"]["memory"]
-        )
-        assert (
-            protocol_param.max_block_ex_steps
-            == params["maxExecutionUnitsPerBlock"]["cpu"]
-        )
+        assert protocol_param.max_tx_ex_mem == params["maxExecutionUnitsPerTransaction"]["memory"]
+        assert protocol_param.max_tx_ex_steps == params["maxExecutionUnitsPerTransaction"]["cpu"]
+        assert protocol_param.max_block_ex_mem == params["maxExecutionUnitsPerBlock"]["memory"]
+        assert protocol_param.max_block_ex_steps == params["maxExecutionUnitsPerBlock"]["cpu"]
         assert protocol_param.max_collateral_inputs == params["maxCollateralInputs"]
         assert protocol_param.max_val_size == params["maxValueSize"]["bytes"]
-        assert (
-            protocol_param.min_fee_constant
-            == params["minFeeConstant"]["ada"]["lovelace"]
-        )
+        assert protocol_param.min_fee_constant == params["minFeeConstant"]["ada"]["lovelace"]
         assert protocol_param.min_fee_coefficient == params["minFeeCoefficient"]
-        assert (
-            protocol_param.min_pool_cost
-            == params["minStakePoolCost"]["ada"]["lovelace"]
-        )
-        assert (
-            protocol_param.key_deposit
-            == params["stakeCredentialDeposit"]["ada"]["lovelace"]
-        )
-        assert (
-            protocol_param.pool_deposit == params["stakePoolDeposit"]["ada"]["lovelace"]
-        )
+        assert protocol_param.min_pool_cost == params["minStakePoolCost"]["ada"]["lovelace"]
+        assert protocol_param.key_deposit == params["stakeCredentialDeposit"]["ada"]["lovelace"]
+        assert protocol_param.pool_deposit == params["stakePoolDeposit"]["ada"]["lovelace"]
         assert protocol_param.protocol_major_version == params["version"]["major"]
         assert protocol_param.protocol_minor_version == params["version"]["minor"]
         assert protocol_param.coins_per_utxo_word == ALONZO_COINS_PER_UTXO_WORD
@@ -282,12 +246,8 @@ class TestOgmiosProtocolParameters:
             "bytes": params["maxReferenceScriptsSizePerTransaction"]["bytes"]
         }
 
-    def test_governance_parameters(
-        self, context, fake_ogmios, ogmios_protocol_parameters
-    ):
-        fake_ogmios.results["queryLedgerState/protocolParameters"] = (
-            ogmios_protocol_parameters
-        )
+    def test_governance_parameters(self, context, fake_ogmios, ogmios_protocol_parameters):
+        fake_ogmios.results["queryLedgerState/protocolParameters"] = ogmios_protocol_parameters
 
         params = context._fetch_protocol_param()
 
@@ -312,12 +272,8 @@ class TestOgmiosProtocolParameters:
         assert params.pool_target_num == 500
         assert params.pool_retire_max_epoch == 18
 
-    def test_protocol_param_is_cached_until_the_tip_moves(
-        self, context, fake_ogmios, ogmios_protocol_parameters
-    ):
-        fake_ogmios.results["queryLedgerState/protocolParameters"] = (
-            ogmios_protocol_parameters
-        )
+    def test_protocol_param_is_cached_until_the_tip_moves(self, context, fake_ogmios, ogmios_protocol_parameters):
+        fake_ogmios.results["queryLedgerState/protocolParameters"] = ogmios_protocol_parameters
         fake_ogmios.results["queryNetwork/tip"] = TIP
 
         context.protocol_param
@@ -334,9 +290,7 @@ class TestOgmiosProtocolParameters:
 
 class TestOgmiosGenesisParameters:
     def test_genesis_param(self, context, fake_ogmios, ogmios_genesis_shelley_config):
-        fake_ogmios.results["queryNetwork/genesisConfiguration"] = (
-            ogmios_genesis_shelley_config
-        )
+        fake_ogmios.results["queryNetwork/genesisConfiguration"] = ogmios_genesis_shelley_config
 
         genesis_param = context.genesis_param
 
@@ -348,9 +302,7 @@ class TestOgmiosGenesisParameters:
             max_lovelace_supply=45000000000000000,
             network_magic=764824073,
             epoch_length=432000,
-            system_start=int(
-                datetime(2017, 9, 23, 21, 44, 51, tzinfo=timezone.utc).timestamp()
-            ),
+            system_start=int(datetime(2017, 9, 23, 21, 44, 51, tzinfo=UTC).timestamp()),
             slots_per_kes_period=129600,
             slot_length=1,
             max_kes_evolutions=62,
@@ -359,12 +311,8 @@ class TestOgmiosGenesisParameters:
         # The chain tip is checked once per expected block interval.
         assert context._refetch_chain_tip_interval == 20
 
-    def test_genesis_param_is_fetched_once(
-        self, context, fake_ogmios, ogmios_genesis_shelley_config
-    ):
-        fake_ogmios.results["queryNetwork/genesisConfiguration"] = (
-            ogmios_genesis_shelley_config
-        )
+    def test_genesis_param_is_fetched_once(self, context, fake_ogmios, ogmios_genesis_shelley_config):
+        fake_ogmios.results["queryNetwork/genesisConfiguration"] = ogmios_genesis_shelley_config
 
         context.genesis_param
         context.genesis_param
@@ -379,29 +327,21 @@ class TestOgmiosUtxos:
 
         results = context.utxos(ADDRESS)
 
-        assert fake_ogmios.requests("queryLedgerState/utxo")[0]["params"] == {
-            "addresses": [ADDRESS]
-        }
+        assert fake_ogmios.requests("queryLedgerState/utxo")[0]["params"] == {"addresses": [ADDRESS]}
         assert results[0].input == TransactionInput.from_primitive([TX_ID, 1])
-        assert results[0].output == TransactionOutput(
-            address=Address.from_primitive(ADDRESS), amount=9858539
-        )
+        assert results[0].output == TransactionOutput(address=Address.from_primitive(ADDRESS), amount=9858539)
         assert results[2].output.amount == Value(
             coin=7094260,
             multi_asset=MultiAsset.from_primitive(
                 {
                     policy: assets
-                    for policy, assets in ogmios_utxos_response["result"][2][
-                        "value"
-                    ].items()
+                    for policy, assets in ogmios_utxos_response["result"][2]["value"].items()
                     if policy != "ada"
                 }
             ),
         )
 
-    def test_utxos_are_cached_per_slot(
-        self, context, fake_ogmios, ogmios_utxos_response
-    ):
+    def test_utxos_are_cached_per_slot(self, context, fake_ogmios, ogmios_utxos_response):
         fake_ogmios.results["queryLedgerState/utxo"] = ogmios_utxos_response["result"]
         fake_ogmios.results["queryNetwork/tip"] = TIP
 
@@ -415,9 +355,7 @@ class TestOgmiosUtxos:
 
         result = context.utxo_by_tx_id(TX_ID, 1)
 
-        assert fake_ogmios.sent[0]["params"] == {
-            "outputReferences": [{"transaction": {"id": TX_ID}, "index": 1}]
-        }
+        assert fake_ogmios.sent[0]["params"] == {"outputReferences": [{"transaction": {"id": TX_ID}, "index": 1}]}
         assert result.input == TransactionInput.from_primitive([TX_ID, 1])
         assert result.output.amount == 9858539
 
@@ -468,9 +406,7 @@ class TestOgmiosUtxos:
     )
     def test_plutus_scripts(self, context, fake_ogmios, language, script_type):
         cbor = "4e4d01000033222220051200120011"
-        fake_ogmios.results["queryLedgerState/utxo"] = [
-            utxo_item(script={"language": language, "cbor": cbor})
-        ]
+        fake_ogmios.results["queryLedgerState/utxo"] = [utxo_item(script={"language": language, "cbor": cbor})]
 
         script = context.utxo_by_tx_id(TX_ID, 1).output.script
 
@@ -478,9 +414,7 @@ class TestOgmiosUtxos:
         assert script == script_type(bytes.fromhex(cbor))
 
     def test_plutus_v4_is_rejected(self, context, fake_ogmios):
-        fake_ogmios.results["queryLedgerState/utxo"] = [
-            utxo_item(script={"language": "plutus:v4", "cbor": "4100"})
-        ]
+        fake_ogmios.results["queryLedgerState/utxo"] = [utxo_item(script={"language": "plutus:v4", "cbor": "4100"})]
 
         with pytest.raises(OgmiosError, match="plutus:v4"):
             context.utxo_by_tx_id(TX_ID, 1)
@@ -552,10 +486,7 @@ class TestOgmiosUtxos:
                     "json": {
                         "clause": "some",
                         "atLeast": 2,
-                        "from": [
-                            {"clause": "signature", "from": signer}
-                            for signer in signers
-                        ],
+                        "from": [{"clause": "signature", "from": signer} for signer in signers],
                     },
                 }
             )
@@ -564,9 +495,7 @@ class TestOgmiosUtxos:
         script = context.utxo_by_tx_id(TX_ID, 1).output.script
 
         # The ledger's hash of the script, as Koios reports it.
-        assert script.hash() == ScriptHash(
-            bytes.fromhex("10b049f9fa44adf1670075d9e3e0297efed2a876c5660d39fed44c1f")
-        )
+        assert script.hash() == ScriptHash(bytes.fromhex("10b049f9fa44adf1670075d9e3e0297efed2a876c5660d39fed44c1f"))
 
     def test_native_script_guard_clause_is_rejected(self, context, fake_ogmios):
         fake_ogmios.results["queryLedgerState/utxo"] = [
@@ -606,9 +535,7 @@ class TestOgmiosTransactions:
 
         assert error.value.code == 3101
 
-    def test_evaluate_tx_cbor_maps_purposes_to_redeemer_tags(
-        self, context, fake_ogmios
-    ):
+    def test_evaluate_tx_cbor_maps_purposes_to_redeemer_tags(self, context, fake_ogmios):
         purposes = ["spend", "mint", "publish", "withdraw", "vote", "propose"]
         fake_ogmios.results["evaluateTransaction"] = [
             {
@@ -860,9 +787,7 @@ def ogmios_governance_proposals():
             "action": {
                 "type": "treasuryWithdrawals",
                 "withdrawals": {GOV_RETURN_ACCOUNT: {"ada": {"lovelace": 889000000}}},
-                "guardrails": {
-                    "hash": "fa24fb305126805cf2164c161d852a0e7330cf988f1fe558cf7d4a64"
-                },
+                "guardrails": {"hash": "fa24fb305126805cf2164c161d852a0e7330cf988f1fe558cf7d4a64"},
             },
             "deposit": {"ada": {"lovelace": 100000000000}},
             "returnAccount": GOV_RETURN_ACCOUNT,
@@ -875,9 +800,7 @@ def ogmios_governance_proposals():
 
 
 class TestOgmiosChainStateQueries:
-    @pytest.mark.parametrize(
-        "count, era", [(7, Era.CONWAY), (6, Era.BABBAGE), (2, Era.SHELLEY)]
-    )
+    @pytest.mark.parametrize("count, era", [(7, Era.CONWAY), (6, Era.BABBAGE), (2, Era.SHELLEY)])
     def test_era(self, context, fake_ogmios, count, era):
         fake_ogmios.results["queryLedgerState/eraSummaries"] = era_summaries(count)
         assert context.era == era
@@ -996,9 +919,7 @@ class TestOgmiosStakeAddressInfo:
 
 class TestOgmiosStakePoolQueries:
     def test_stake_pools(self, context, fake_ogmios, ogmios_stake_pool):
-        fake_ogmios.results["queryLedgerState/stakePools"] = {
-            POOL_ID: ogmios_stake_pool
-        }
+        fake_ogmios.results["queryLedgerState/stakePools"] = {POOL_ID: ogmios_stake_pool}
 
         pools = context.stake_pools()
 
@@ -1013,12 +934,8 @@ class TestOgmiosStakePoolQueries:
         ogmios_stake_pool,
         ogmios_stake_pools_performances,
     ):
-        fake_ogmios.results["queryLedgerState/stakePools"] = {
-            POOL_ID: ogmios_stake_pool
-        }
-        fake_ogmios.results["queryLedgerState/stakePoolsPerformances"] = (
-            ogmios_stake_pools_performances
-        )
+        fake_ogmios.results["queryLedgerState/stakePools"] = {POOL_ID: ogmios_stake_pool}
+        fake_ogmios.results["queryLedgerState/stakePoolsPerformances"] = ogmios_stake_pools_performances
 
         info = context.stake_pool_info(POOL_ID)
 
@@ -1029,9 +946,7 @@ class TestOgmiosStakePoolQueries:
         assert params.pledge == 100000000000
         assert params.cost == 170000000
         assert params.margin == Fraction(3, 100)
-        assert params.reward_account == RewardAccountHash(
-            bytes(Address.from_primitive(REWARD_ACCOUNT).to_primitive())
-        )
+        assert params.reward_account == RewardAccountHash(bytes(Address.from_primitive(REWARD_ACCOUNT).to_primitive()))
         assert params.pool_owners == [VerificationKeyHash(bytes.fromhex(POOL_KEY_HASH))]
         assert params.pool_metadata == PoolMetadata(
             url="https://example.com/pool.json",
@@ -1054,12 +969,8 @@ class TestOgmiosStakePoolQueries:
         assert info.opcert_counter is None
         assert info.retiring_epoch is None
 
-    def test_stake_pool_info_without_performances(
-        self, context, fake_ogmios, ogmios_stake_pool
-    ):
-        fake_ogmios.results["queryLedgerState/stakePools"] = {
-            POOL_ID: ogmios_stake_pool
-        }
+    def test_stake_pool_info_without_performances(self, context, fake_ogmios, ogmios_stake_pool):
+        fake_ogmios.results["queryLedgerState/stakePools"] = {POOL_ID: ogmios_stake_pool}
         fake_ogmios.errors["queryLedgerState/stakePoolsPerformances"] = {
             "code": 2002,
             "message": "unavailable in current era",
@@ -1078,12 +989,8 @@ class TestOgmiosStakePoolQueries:
         with pytest.raises(OgmiosError, match="Stake pool not found"):
             context.stake_pool_info(POOL_ID)
 
-    def test_spo_stake_distribution(
-        self, context, fake_ogmios, ogmios_stake_pools_performances
-    ):
-        fake_ogmios.results["queryLedgerState/stakePoolsPerformances"] = (
-            ogmios_stake_pools_performances
-        )
+    def test_spo_stake_distribution(self, context, fake_ogmios, ogmios_stake_pools_performances):
+        fake_ogmios.results["queryLedgerState/stakePoolsPerformances"] = ogmios_stake_pools_performances
 
         assert context.spo_stake_distribution() == [
             SPOStakeEntry(pool_id=POOL_ID, stake=200000000000),
@@ -1092,12 +999,8 @@ class TestOgmiosStakePoolQueries:
 
 
 class TestOgmiosKesPeriodInfo:
-    def test_kes_period_info(
-        self, context, fake_ogmios, ogmios_operational_certificates
-    ):
-        fake_ogmios.results["queryLedgerState/operationalCertificates"] = (
-            ogmios_operational_certificates
-        )
+    def test_kes_period_info(self, context, fake_ogmios, ogmios_operational_certificates):
+        fake_ogmios.results["queryLedgerState/operationalCertificates"] = ogmios_operational_certificates
 
         info = context.kes_period_info(pool=PoolOperator.from_primitive(OPCERT_POOL_ID))
 
@@ -1112,9 +1015,7 @@ class TestOgmiosKesPeriodInfo:
     def test_kes_period_info_ignores_the_operational_certificate(
         self, context, fake_ogmios, ogmios_operational_certificates
     ):
-        fake_ogmios.results["queryLedgerState/operationalCertificates"] = (
-            ogmios_operational_certificates
-        )
+        fake_ogmios.results["queryLedgerState/operationalCertificates"] = ogmios_operational_certificates
 
         info = context.kes_period_info(
             pool=PoolOperator.from_primitive(OPCERT_POOL_ID),
@@ -1127,12 +1028,8 @@ class TestOgmiosKesPeriodInfo:
         with pytest.raises(OgmiosError, match="pool operator must be provided"):
             context.kes_period_info()
 
-    def test_kes_period_info_for_a_pool_without_a_counter(
-        self, context, fake_ogmios, ogmios_operational_certificates
-    ):
-        fake_ogmios.results["queryLedgerState/operationalCertificates"] = (
-            ogmios_operational_certificates
-        )
+    def test_kes_period_info_for_a_pool_without_a_counter(self, context, fake_ogmios, ogmios_operational_certificates):
+        fake_ogmios.results["queryLedgerState/operationalCertificates"] = ogmios_operational_certificates
 
         with pytest.raises(OgmiosError, match="No operational certificate counter"):
             context.kes_period_info(pool=PoolOperator.from_primitive(POOL_ID))
@@ -1147,12 +1044,8 @@ class TestOgmiosTreasuryAndCommitteeQueries:
 
         assert context.treasury() == 1234567890
 
-    def test_committee_state(
-        self, context, fake_ogmios, ogmios_constitutional_committee
-    ):
-        fake_ogmios.results["queryLedgerState/constitutionalCommittee"] = (
-            ogmios_constitutional_committee
-        )
+    def test_committee_state(self, context, fake_ogmios, ogmios_constitutional_committee):
+        fake_ogmios.results["queryLedgerState/constitutionalCommittee"] = ogmios_constitutional_committee
 
         state = context.committee_state()
 
@@ -1176,13 +1069,9 @@ class TestOgmiosTreasuryAndCommitteeQueries:
         assert resigned.hot_credential is None
         assert resigned.status == CommitteeMemberStatus.EXPIRED
 
-    def test_committee_state_without_quorum(
-        self, context, fake_ogmios, ogmios_constitutional_committee
-    ):
+    def test_committee_state_without_quorum(self, context, fake_ogmios, ogmios_constitutional_committee):
         ogmios_constitutional_committee["quorum"] = None
-        fake_ogmios.results["queryLedgerState/constitutionalCommittee"] = (
-            ogmios_constitutional_committee
-        )
+        fake_ogmios.results["queryLedgerState/constitutionalCommittee"] = ogmios_constitutional_committee
 
         assert context.committee_state().threshold is None
 
@@ -1194,30 +1083,18 @@ class TestOgmiosTreasuryAndCommitteeQueries:
         assert state.members == []
         assert state.threshold is None
 
-    def test_committee_member_info_by_cold_credential(
-        self, context, fake_ogmios, ogmios_constitutional_committee
-    ):
-        fake_ogmios.results["queryLedgerState/constitutionalCommittee"] = (
-            ogmios_constitutional_committee
-        )
-        cold = CommitteeColdCredential(
-            credential=VerificationKeyHash(bytes.fromhex(COMMITTEE_COLD_KEY_HASH))
-        )
+    def test_committee_member_info_by_cold_credential(self, context, fake_ogmios, ogmios_constitutional_committee):
+        fake_ogmios.results["queryLedgerState/constitutionalCommittee"] = ogmios_constitutional_committee
+        cold = CommitteeColdCredential(credential=VerificationKeyHash(bytes.fromhex(COMMITTEE_COLD_KEY_HASH)))
 
         member = context.committee_member_info(cold=cold)
 
         assert member.cold_credential == cold
         assert member.expiration == 580
 
-    def test_committee_member_info_by_hot_credential(
-        self, context, fake_ogmios, ogmios_constitutional_committee
-    ):
-        fake_ogmios.results["queryLedgerState/constitutionalCommittee"] = (
-            ogmios_constitutional_committee
-        )
-        hot = CommitteeHotCredential(
-            credential=ScriptHash(bytes.fromhex(COMMITTEE_HOT_SCRIPT_HASH))
-        )
+    def test_committee_member_info_by_hot_credential(self, context, fake_ogmios, ogmios_constitutional_committee):
+        fake_ogmios.results["queryLedgerState/constitutionalCommittee"] = ogmios_constitutional_committee
+        hot = CommitteeHotCredential(credential=ScriptHash(bytes.fromhex(COMMITTEE_HOT_SCRIPT_HASH)))
 
         member = context.committee_member_info(hot=hot)
 
@@ -1230,18 +1107,12 @@ class TestOgmiosTreasuryAndCommitteeQueries:
         with pytest.raises(OgmiosError, match="cold or a hot committee credential"):
             context.committee_member_info()
 
-    def test_committee_member_info_not_found(
-        self, context, fake_ogmios, ogmios_constitutional_committee
-    ):
-        fake_ogmios.results["queryLedgerState/constitutionalCommittee"] = (
-            ogmios_constitutional_committee
-        )
+    def test_committee_member_info_not_found(self, context, fake_ogmios, ogmios_constitutional_committee):
+        fake_ogmios.results["queryLedgerState/constitutionalCommittee"] = ogmios_constitutional_committee
 
         with pytest.raises(OgmiosError, match="Committee member not found"):
             context.committee_member_info(
-                cold=CommitteeColdCredential(
-                    credential=VerificationKeyHash(bytes.fromhex("11" * 28))
-                )
+                cold=CommitteeColdCredential(credential=VerificationKeyHash(bytes.fromhex("11" * 28)))
             )
 
 
@@ -1256,21 +1127,15 @@ class TestOgmiosErrors:
             context.kes_period_info(pool=PoolOperator.from_primitive(POOL_ID))
 
     def test_a_malformed_result_is_rejected(self, context, fake_ogmios):
-        fake_ogmios.results["queryLedgerState/governanceProposals"] = [
-            {"votes": [], "action": {"type": "information"}}
-        ]
+        fake_ogmios.results["queryLedgerState/governanceProposals"] = [{"votes": [], "action": {"type": "information"}}]
 
         with pytest.raises(pydantic.ValidationError):
             context.gov_actions_all()
 
 
 class TestOgmiosDRepQueries:
-    def test_drep_info_for_a_registered_key_hash_drep(
-        self, context, fake_ogmios, ogmios_delegate_representatives
-    ):
-        fake_ogmios.results["queryLedgerState/delegateRepresentatives"] = (
-            ogmios_delegate_representatives
-        )
+    def test_drep_info_for_a_registered_key_hash_drep(self, context, fake_ogmios, ogmios_delegate_representatives):
+        fake_ogmios.results["queryLedgerState/delegateRepresentatives"] = ogmios_delegate_representatives
         fake_ogmios.results["queryLedgerState/epoch"] = 1000
         drep = DRep(
             DRepKind.VERIFICATION_KEY_HASH,
@@ -1279,9 +1144,9 @@ class TestOgmiosDRepQueries:
 
         info = context.drep_info(drep)
 
-        assert fake_ogmios.requests("queryLedgerState/delegateRepresentatives")[0][
-            "params"
-        ] == {"keys": [DREP_KEY_HASH]}
+        assert fake_ogmios.requests("queryLedgerState/delegateRepresentatives")[0]["params"] == {
+            "keys": [DREP_KEY_HASH]
+        }
         assert info.drep == drep
         assert info.deposit == 500000000
         assert info.stake == 0
@@ -1294,12 +1159,8 @@ class TestOgmiosDRepQueries:
         # The mandate has not lapsed at epoch 1000.
         assert info.active is True
 
-    def test_drep_info_after_the_mandate_lapses(
-        self, context, fake_ogmios, ogmios_delegate_representatives
-    ):
-        fake_ogmios.results["queryLedgerState/delegateRepresentatives"] = (
-            ogmios_delegate_representatives
-        )
+    def test_drep_info_after_the_mandate_lapses(self, context, fake_ogmios, ogmios_delegate_representatives):
+        fake_ogmios.results["queryLedgerState/delegateRepresentatives"] = ogmios_delegate_representatives
         fake_ogmios.results["queryLedgerState/epoch"] = 1069
         drep = DRep(
             DRepKind.VERIFICATION_KEY_HASH,
@@ -1312,20 +1173,16 @@ class TestOgmiosDRepQueries:
         # A lapsed registration is still a registration.
         assert info.status == DRepStatus.REGISTERED
 
-    def test_drep_info_for_a_script_hash_drep(
-        self, context, fake_ogmios, ogmios_delegate_representatives
-    ):
-        fake_ogmios.results["queryLedgerState/delegateRepresentatives"] = (
-            ogmios_delegate_representatives
-        )
+    def test_drep_info_for_a_script_hash_drep(self, context, fake_ogmios, ogmios_delegate_representatives):
+        fake_ogmios.results["queryLedgerState/delegateRepresentatives"] = ogmios_delegate_representatives
         fake_ogmios.results["queryLedgerState/epoch"] = 1000
         drep = DRep(DRepKind.SCRIPT_HASH, ScriptHash(bytes.fromhex(DREP_SCRIPT_HASH)))
 
         info = context.drep_info(drep)
 
-        assert fake_ogmios.requests("queryLedgerState/delegateRepresentatives")[0][
-            "params"
-        ] == {"scripts": [DREP_SCRIPT_HASH]}
+        assert fake_ogmios.requests("queryLedgerState/delegateRepresentatives")[0]["params"] == {
+            "scripts": [DREP_SCRIPT_HASH]
+        }
         assert info.stake == 123456789
         assert info.expiry == 1100
         assert info.active is True
@@ -1363,9 +1220,7 @@ class TestOgmiosDRepQueries:
     def test_drep_info_for_the_predefined_options(
         self, context, fake_ogmios, ogmios_delegate_representatives, kind, stake
     ):
-        fake_ogmios.results["queryLedgerState/delegateRepresentatives"] = (
-            ogmios_delegate_representatives
-        )
+        fake_ogmios.results["queryLedgerState/delegateRepresentatives"] = ogmios_delegate_representatives
 
         info = context.drep_info(DRep(kind))
 
@@ -1381,12 +1236,8 @@ class TestOgmiosDRepQueries:
         with pytest.raises(OgmiosError, match="did not report the abstain"):
             context.drep_info(DRep(DRepKind.ALWAYS_ABSTAIN))
 
-    def test_drep_stake_distribution(
-        self, context, fake_ogmios, ogmios_delegate_representatives
-    ):
-        fake_ogmios.results["queryLedgerState/delegateRepresentatives"] = (
-            ogmios_delegate_representatives
-        )
+    def test_drep_stake_distribution(self, context, fake_ogmios, ogmios_delegate_representatives):
+        fake_ogmios.results["queryLedgerState/delegateRepresentatives"] = ogmios_delegate_representatives
 
         distribution = context.drep_stake_distribution()
 
@@ -1400,15 +1251,11 @@ class TestOgmiosDRepQueries:
                 stake=0,
             ),
             DRepStakeEntry(
-                drep=DRep(
-                    DRepKind.SCRIPT_HASH, ScriptHash(bytes.fromhex(DREP_SCRIPT_HASH))
-                ),
+                drep=DRep(DRepKind.SCRIPT_HASH, ScriptHash(bytes.fromhex(DREP_SCRIPT_HASH))),
                 stake=123456789,
             ),
             DRepStakeEntry(drep=DRep(DRepKind.ALWAYS_ABSTAIN), stake=46115228289209),
-            DRepStakeEntry(
-                drep=DRep(DRepKind.ALWAYS_NO_CONFIDENCE), stake=15049380877790
-            ),
+            DRepStakeEntry(drep=DRep(DRepKind.ALWAYS_NO_CONFIDENCE), stake=15049380877790),
         ]
 
 
@@ -1421,16 +1268,12 @@ class TestOgmiosGovernanceProposalQueries:
         )
 
     def test_gov_action_info(self, context, fake_ogmios, ogmios_governance_proposals):
-        fake_ogmios.results["queryLedgerState/governanceProposals"] = (
-            ogmios_governance_proposals
-        )
+        fake_ogmios.results["queryLedgerState/governanceProposals"] = ogmios_governance_proposals
 
         info = context.gov_action_info(self.gov_action_id)
 
         # The query is filtered on the action's reference.
-        assert fake_ogmios.sent[0]["params"] == {
-            "proposals": [{"transaction": {"id": GOV_ACTION_TX_ID}, "index": 0}]
-        }
+        assert fake_ogmios.sent[0]["params"] == {"proposals": [{"transaction": {"id": GOV_ACTION_TX_ID}, "index": 0}]}
         assert info.gov_action_id == self.gov_action_id
         assert info.proposed_in == 1021
         assert info.expires_after == 1051
@@ -1444,9 +1287,7 @@ class TestOgmiosGovernanceProposalQueries:
         assert info.status is None
 
     def test_gov_action_votes(self, context, fake_ogmios, ogmios_governance_proposals):
-        fake_ogmios.results["queryLedgerState/governanceProposals"] = (
-            ogmios_governance_proposals
-        )
+        fake_ogmios.results["queryLedgerState/governanceProposals"] = ogmios_governance_proposals
 
         votes = context.gov_action_votes(self.gov_action_id)
 
@@ -1478,21 +1319,15 @@ class TestOgmiosGovernanceProposalQueries:
         ]
         assert votes.committee_votes == [
             CommitteeVote(
-                voter=CommitteeHotCredential(
-                    ScriptHash(bytes.fromhex(COMMITTEE_HOT_SCRIPT_HASH))
-                ),
+                voter=CommitteeHotCredential(ScriptHash(bytes.fromhex(COMMITTEE_HOT_SCRIPT_HASH))),
                 vote=Vote.YES,
             )
         ]
         # The genesis delegate vote has no voter class here and is dropped.
-        assert votes.stake_pool_votes == [
-            StakePoolVote(voter=POOL_ID, vote=Vote.ABSTAIN)
-        ]
+        assert votes.stake_pool_votes == [StakePoolVote(voter=POOL_ID, vote=Vote.ABSTAIN)]
 
     def test_gov_actions_all(self, context, fake_ogmios, ogmios_governance_proposals):
-        fake_ogmios.results["queryLedgerState/governanceProposals"] = (
-            ogmios_governance_proposals
-        )
+        fake_ogmios.results["queryLedgerState/governanceProposals"] = ogmios_governance_proposals
 
         actions = context.gov_actions_all()
 
@@ -1505,9 +1340,7 @@ class TestOgmiosGovernanceProposalQueries:
 
     def test_gov_action_not_found(self, context, fake_ogmios):
         fake_ogmios.results["queryLedgerState/governanceProposals"] = []
-        missing = GovActionId(
-            transaction_id=TransactionId(bytes.fromhex("aa" * 32)), gov_action_index=0
-        )
+        missing = GovActionId(transaction_id=TransactionId(bytes.fromhex("aa" * 32)), gov_action_index=0)
 
         with pytest.raises(OgmiosError, match="Governance action not found"):
             context.gov_action_info(missing)

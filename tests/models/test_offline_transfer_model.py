@@ -46,60 +46,37 @@ from pccontext.models import (
     SPOStakeEntry,
     StakePoolInfo,
     StakePoolVote,
-    TokenMetadata,
 )
 from pccontext.models.offline_transfer_model import TransactionJSON
 
 
 def test_offline_transfer_general(fake_offline_transfer_general):
     # Act
-    offline_transfer_general = OfflineTransferGeneral.from_json(
-        fake_offline_transfer_general
-    )
+    offline_transfer_general = OfflineTransferGeneral.from_json(fake_offline_transfer_general)
 
     # Assert
     assert offline_transfer_general is not None
-    assert (
-        offline_transfer_general.offline_cli_version
-        == fake_offline_transfer_general["offline_cli_version"]
-    )
-    assert (
-        offline_transfer_general.online_cli_version
-        == fake_offline_transfer_general["online_cli_version"]
-    )
-    assert (
-        offline_transfer_general.online_node_version
-        == fake_offline_transfer_general["online_node_version"]
-    )
+    assert offline_transfer_general.offline_cli_version == fake_offline_transfer_general["offline_cli_version"]
+    assert offline_transfer_general.online_cli_version == fake_offline_transfer_general["online_cli_version"]
+    assert offline_transfer_general.online_node_version == fake_offline_transfer_general["online_node_version"]
 
 
 def test_offline_transfer_protocol(fake_offline_transfer_protocol):
     # Act
-    offline_transfer_protocol = OfflineTransferProtocol.from_json(
-        fake_offline_transfer_protocol
-    )
+    offline_transfer_protocol = OfflineTransferProtocol.from_json(fake_offline_transfer_protocol)
 
     # Assert
     assert offline_transfer_protocol is not None
-    assert (
-        offline_transfer_protocol.protocol_parameters
-        == ProtocolParameters.from_json(
-            fake_offline_transfer_protocol["protocol_parameters"]
-        )
+    assert offline_transfer_protocol.protocol_parameters == ProtocolParameters.from_json(
+        fake_offline_transfer_protocol["protocol_parameters"]
     )
-    assert offline_transfer_protocol.era == Era(
-        fake_offline_transfer_protocol["era"].lower()
-    )
-    assert offline_transfer_protocol.network == Network(
-        fake_offline_transfer_protocol["network"].lower()
-    )
+    assert offline_transfer_protocol.era == Era(fake_offline_transfer_protocol["era"].lower())
+    assert offline_transfer_protocol.network == Network(fake_offline_transfer_protocol["network"].lower())
 
 
 def test_offline_transfer_history(fake_offline_transfer_history):
     # Act
-    offline_transfer_history = OfflineTransferHistory.from_json(
-        fake_offline_transfer_history
-    )
+    offline_transfer_history = OfflineTransferHistory.from_json(fake_offline_transfer_history)
 
     # Assert
     assert offline_transfer_history is not None
@@ -109,9 +86,7 @@ def test_offline_transfer_history(fake_offline_transfer_history):
 
 def test_offline_transfer_history_to_json(fake_offline_transfer_history):
     # Act
-    offline_transfer_history = OfflineTransferHistory.from_json(
-        fake_offline_transfer_history
-    )
+    offline_transfer_history = OfflineTransferHistory.from_json(fake_offline_transfer_history)
 
     json_output = offline_transfer_history.to_json()
 
@@ -134,38 +109,17 @@ def test_offline_transfer_file(fake_offline_transfer_file):
 
 def test_offline_transfer_transaction(fake_offline_transfer_transaction):
     # Act
-    offline_transfer_transaction = OfflineTransferTransaction.from_json(
-        fake_offline_transfer_transaction
-    )
+    offline_transfer_transaction = OfflineTransferTransaction.from_json(fake_offline_transfer_transaction)
 
     # Assert
     assert offline_transfer_transaction is not None
-    assert (
-        offline_transfer_transaction.type == fake_offline_transfer_transaction["type"]
-    )
-    assert (
-        offline_transfer_transaction.date == fake_offline_transfer_transaction["date"]
-    )
-    assert (
-        offline_transfer_transaction.stake_address
-        == fake_offline_transfer_transaction["stake_address"]
-    )
-    assert (
-        offline_transfer_transaction.from_address
-        == fake_offline_transfer_transaction["from_address"]
-    )
-    assert (
-        offline_transfer_transaction.from_name
-        == fake_offline_transfer_transaction["from_name"]
-    )
-    assert (
-        offline_transfer_transaction.to_address
-        == fake_offline_transfer_transaction["to_address"]
-    )
-    assert (
-        offline_transfer_transaction.to_name
-        == fake_offline_transfer_transaction["to_name"]
-    )
+    assert offline_transfer_transaction.type == fake_offline_transfer_transaction["type"]
+    assert offline_transfer_transaction.date == fake_offline_transfer_transaction["date"]
+    assert offline_transfer_transaction.stake_address == fake_offline_transfer_transaction["stake_address"]
+    assert offline_transfer_transaction.from_address == fake_offline_transfer_transaction["from_address"]
+    assert offline_transfer_transaction.from_name == fake_offline_transfer_transaction["from_name"]
+    assert offline_transfer_transaction.to_address == fake_offline_transfer_transaction["to_address"]
+    assert offline_transfer_transaction.to_name == fake_offline_transfer_transaction["to_name"]
     assert offline_transfer_transaction.tx_json == TransactionJSON.from_dict(
         fake_offline_transfer_transaction["tx_json"]
     )
@@ -177,43 +131,21 @@ def test_offline_transfer(fake_offline_transfer):
 
     # Assert
     assert offline_transfer is not None
-    assert (
-        offline_transfer.general.offline_cli_version
-        == fake_offline_transfer["general"]["offline_cli_version"]
-    )
-    assert (
-        offline_transfer.general.online_cli_version
-        == fake_offline_transfer["general"]["online_cli_version"]
-    )
-    assert (
-        offline_transfer.general.online_node_version
-        == fake_offline_transfer["general"]["online_node_version"]
-    )
+    assert offline_transfer.general.offline_cli_version == fake_offline_transfer["general"]["offline_cli_version"]
+    assert offline_transfer.general.online_cli_version == fake_offline_transfer["general"]["online_cli_version"]
+    assert offline_transfer.general.online_node_version == fake_offline_transfer["general"]["online_node_version"]
 
-    assert offline_transfer.protocol.era == Era(
-        fake_offline_transfer["protocol"]["era"].lower()
+    assert offline_transfer.protocol.era == Era(fake_offline_transfer["protocol"]["era"].lower())
+    assert offline_transfer.protocol.network == Network(fake_offline_transfer["protocol"]["network"].lower())
+    assert offline_transfer.protocol.protocol_parameters == ProtocolParameters.from_json(
+        fake_offline_transfer["protocol"]["protocol_parameters"]
     )
-    assert offline_transfer.protocol.network == Network(
-        fake_offline_transfer["protocol"]["network"].lower()
-    )
-    assert (
-        offline_transfer.protocol.protocol_parameters
-        == ProtocolParameters.from_json(
-            fake_offline_transfer["protocol"]["protocol_parameters"]
-        )
-    )
-    assert offline_transfer.history == [
-        OfflineTransferHistory.from_json(fake_offline_transfer["history"])
-    ]
-    assert offline_transfer.files == [
-        OfflineTransferFile.from_json(fake_offline_transfer["files"])
-    ]
+    assert offline_transfer.history == [OfflineTransferHistory.from_json(fake_offline_transfer["history"])]
+    assert offline_transfer.files == [OfflineTransferFile.from_json(fake_offline_transfer["files"])]
     assert offline_transfer.transactions == [
         OfflineTransferTransaction.from_json(fake_offline_transfer["transactions"])
     ]
-    assert offline_transfer.addresses == [
-        AddressInfo.from_json(fake_offline_transfer["addresses"])
-    ]
+    assert offline_transfer.addresses == [AddressInfo.from_json(fake_offline_transfer["addresses"])]
 
 
 def test_offline_transfer_to_json(fake_offline_transfer):
@@ -247,9 +179,7 @@ def populated_transfer():
         url="https://example.invalid/meta",
         data_hash=AnchorDataHash(bytes(range(32))),
     )
-    gov_action_id = GovActionId(
-        transaction_id=TransactionId(bytes(range(32))), gov_action_index=2
-    )
+    gov_action_id = GovActionId(transaction_id=TransactionId(bytes(range(32))), gov_action_index=2)
 
     return OfflineTransfer(
         stake_pools=[pool_operator],
@@ -320,13 +250,9 @@ def populated_transfer():
             GovActionVotes(
                 gov_action_id=gov_action_id,
                 gov_action={"tag": "InfoAction"},
-                committee_votes=[
-                    CommitteeVote(voter=hot, vote=Vote.YES, anchor=anchor)
-                ],
+                committee_votes=[CommitteeVote(voter=hot, vote=Vote.YES, anchor=anchor)],
                 drep_votes=[DRepVote(voter=drep, vote=Vote.NO)],
-                stake_pool_votes=[
-                    StakePoolVote(voter=pool_operator.encode(), vote=Vote.ABSTAIN)
-                ],
+                stake_pool_votes=[StakePoolVote(voter=pool_operator.encode(), vote=Vote.ABSTAIN)],
                 deposit=100_000_000,
                 deposit_return_addr="stake_test1uq",
                 anchor=anchor,
@@ -336,11 +262,7 @@ def populated_transfer():
         drep_stake_entries=[DRepStakeEntry(drep=drep, stake=42)],
         spo_stake_entries=[SPOStakeEntry(pool_id=pool_operator.encode(), stake=84)],
         committee_state=CommitteeStateInfo(
-            members=[
-                CommitteeMemberInfo(
-                    cold_credential=cold, hot_credential=hot, expiration=700
-                )
-            ],
+            members=[CommitteeMemberInfo(cold_credential=cold, hot_credential=hot, expiration=700)],
             threshold=0.6,
         ),
     )
@@ -415,9 +337,7 @@ def test_a_captured_empty_section_is_kept_distinct_from_an_absent_one():
 
 def test_unparsable_cbor_in_a_section_does_not_break_loading():
     """A corrupt entry loses that one field rather than failing the whole load."""
-    offline_transfer = OfflineTransfer.from_json(
-        {"drep_infos": [{"drep": "not-cbor", "stake": 7}]}
-    )
+    offline_transfer = OfflineTransfer.from_json({"drep_infos": [{"drep": "not-cbor", "stake": 7}]})
 
     assert offline_transfer.drep_infos[0].drep is None
     assert offline_transfer.drep_infos[0].stake == 7

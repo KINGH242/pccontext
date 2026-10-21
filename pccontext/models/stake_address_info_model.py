@@ -14,9 +14,7 @@ class StakeAddressInfo(BaseModel):
 
     active: Optional[bool] = field(default=True)
     active_epoch: Optional[int] = field(default=None)
-    address: Optional[str] = field(
-        default=None, metadata={"aliases": ["stake_address", "address"]}
-    )
+    address: Optional[str] = field(default=None, metadata={"aliases": ["stake_address", "address"]})
     delegation_deposit: int = field(
         default=0,
         metadata={"aliases": ["delegation_deposit", "delegationDeposit", "deposit"]},
@@ -36,9 +34,7 @@ class StakeAddressInfo(BaseModel):
         default=None,
         metadata={"aliases": ["stake_delegation", "stakeDelegation", "delegated_pool"]},
     )
-    vote_delegation: Optional[str] = field(
-        default=None, metadata={"aliases": ["vote_delegation", "voteDelegation"]}
-    )
+    vote_delegation: Optional[str] = field(default=None, metadata={"aliases": ["vote_delegation", "voteDelegation"]})
     delegate_representative: Optional[str] = field(
         default=None,
         metadata={

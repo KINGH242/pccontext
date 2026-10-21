@@ -89,27 +89,19 @@ def context():
         api = MagicMock()
         api.epoch_latest.return_value = _ns({"epoch": 500, "end_time": 1 << 40})
         mock_api.return_value = api
-        yield BlockFrostChainContext(
-            "project_id", base_url=ApiUrls.mainnet.value, network=Network.MAINNET
-        )
+        yield BlockFrostChainContext("project_id", base_url=ApiUrls.mainnet.value, network=Network.MAINNET)
 
 
 @patch("pccontext.backend.blockfrost.BlockFrostApi")
 def test_blockfrost_chain_context(mock_api):
     mock_api.return_value = MagicMock()
-    chain_context = BlockFrostChainContext(
-        "project_id", base_url=ApiUrls.mainnet.value, network=Network.MAINNET
-    )
+    chain_context = BlockFrostChainContext("project_id", base_url=ApiUrls.mainnet.value, network=Network.MAINNET)
     assert chain_context.network == PyCardanoNetwork.MAINNET
 
-    chain_context = BlockFrostChainContext(
-        "project_id", base_url=ApiUrls.preprod.value, network=Network.PREPROD
-    )
+    chain_context = BlockFrostChainContext("project_id", base_url=ApiUrls.preprod.value, network=Network.PREPROD)
     assert chain_context.network == PyCardanoNetwork.TESTNET
 
-    chain_context = BlockFrostChainContext(
-        "project_id", base_url=ApiUrls.preview.value, network=Network.PREVIEW
-    )
+    chain_context = BlockFrostChainContext("project_id", base_url=ApiUrls.preview.value, network=Network.PREVIEW)
     assert chain_context.network == PyCardanoNetwork.TESTNET
 
 
@@ -195,9 +187,7 @@ def test_utxo_returns_unspent_output(context):
 
 
 def test_utxo_reports_spent_output_and_multi_asset(context):
-    context.api.transaction_utxos.return_value = _tx_utxos_payload(
-        consumed_by_tx="ab" * 32
-    )
+    context.api.transaction_utxos.return_value = _tx_utxos_payload(consumed_by_tx="ab" * 32)
 
     utxo, is_spent = context.utxo(TransactionInput.from_primitive([TX_HASH, 1]))
 
@@ -432,9 +422,7 @@ def test_kes_period_info_with_op_cert(context):
     context.api.pool_blocks.return_value = [BLOCK_HASH]
     context.api.block.return_value = _ns({"op_cert_counter": "6"})
 
-    info = context.kes_period_info(
-        pool=PoolOperator.from_primitive(POOL_ID), op_cert=OP_CERT_CBOR
-    )
+    info = context.kes_period_info(pool=PoolOperator.from_primitive(POOL_ID), op_cert=OP_CERT_CBOR)
 
     assert info.on_chain_op_cert_count == 6
     assert info.on_disk_op_cert_count == 7
@@ -459,9 +447,7 @@ def test_kes_period_info_rejects_malformed_op_cert(context):
     context.api.block.return_value = _ns({"op_cert_counter": "6"})
 
     with pytest.raises(BlockfrostError):
-        context.kes_period_info(
-            pool=PoolOperator.from_primitive(POOL_ID), op_cert="not-cbor"
-        )
+        context.kes_period_info(pool=PoolOperator.from_primitive(POOL_ID), op_cert="not-cbor")
 
 
 def test_kes_period_info_requires_a_pool(context):
@@ -622,9 +608,7 @@ class TestDRepStakeDistribution:
 
     def test_unparseable_id_keeps_the_row(self, context):
         """One bad id should not lose the whole distribution."""
-        context.api.governance_dreps.return_value = [
-            _ns({"drep_id": "not-a-drep", "amount": "42"})
-        ]
+        context.api.governance_dreps.return_value = [_ns({"drep_id": "not-a-drep", "amount": "42"})]
         entries = context.drep_stake_distribution()
         assert len(entries) == 1
         assert entries[0].drep is None
@@ -657,12 +641,8 @@ def _proposal(**overrides):
 
 class TestGovActionInfo:
     def test_maps_lifecycle_epochs(self, context):
-        context.api.governance_proposal_by_gov_action_id.return_value = _proposal(
-            ratified_epoch=510, enacted_epoch=512
-        )
-        gov_id = GovActionId(
-            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
-        )
+        context.api.governance_proposal_by_gov_action_id.return_value = _proposal(ratified_epoch=510, enacted_epoch=512)
+        gov_id = GovActionId(transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0)
 
         info = context.gov_action_info(gov_id)
 
@@ -675,16 +655,12 @@ class TestGovActionInfo:
 
     def test_open_action_has_no_status(self, context):
         context.api.governance_proposal_by_gov_action_id.return_value = _proposal()
-        gov_id = GovActionId(
-            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
-        )
+        gov_id = GovActionId(transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0)
         assert context.gov_action_info(gov_id).status is None
 
     def test_api_failure_is_wrapped(self, context):
         context.api.governance_proposal_by_gov_action_id.side_effect = _api_error(500)
-        gov_id = GovActionId(
-            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
-        )
+        gov_id = GovActionId(transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0)
         with pytest.raises(BlockfrostError):
             context.gov_action_info(gov_id)
 
@@ -700,17 +676,13 @@ class TestGovActionVotes:
             }
         ),
         _ns({"voter_role": "drep", "voter": DREP_ID, "vote": "no", "counted": True}),
-        _ns(
-            {"voter_role": "spo", "voter": "pool1x", "vote": "abstain", "counted": True}
-        ),
+        _ns({"voter_role": "spo", "voter": "pool1x", "vote": "abstain", "counted": True}),
     ]
 
     def test_splits_votes_by_role(self, context):
         context.api.governance_proposal_by_gov_action_id.return_value = _proposal()
         context.api.governance_proposal_votes_by_gov_action_id.return_value = self.VOTES
-        gov_id = GovActionId(
-            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
-        )
+        gov_id = GovActionId(transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0)
 
         votes = context.gov_action_votes(gov_id)
 
@@ -725,9 +697,7 @@ class TestGovActionVotes:
     def test_no_votes_yields_empty_lists(self, context):
         context.api.governance_proposal_by_gov_action_id.return_value = _proposal()
         context.api.governance_proposal_votes_by_gov_action_id.return_value = []
-        gov_id = GovActionId(
-            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
-        )
+        gov_id = GovActionId(transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0)
         votes = context.gov_action_votes(gov_id)
         assert votes.committee_votes == []
         assert votes.drep_votes == []
@@ -737,9 +707,7 @@ class TestGovActionVotes:
         context.api.governance_proposal_votes_by_gov_action_id.return_value = [
             _ns({"voter_role": "martian", "voter": "x", "vote": "yes"})
         ]
-        gov_id = GovActionId(
-            transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0
-        )
+        gov_id = GovActionId(transaction_id=TransactionId(bytes.fromhex(TX_HASH)), gov_action_index=0)
         votes = context.gov_action_votes(gov_id)
         assert not (votes.committee_votes or votes.drep_votes or votes.stake_pool_votes)
 
@@ -832,18 +800,14 @@ class TestCommittee:
         info = dict(COMMITTEE)
         info["members"] = [dict(COMMITTEE["members"][0], expiration_epoch=499)]
         context.api.governance_committee.return_value = _ns(info)
-        assert (
-            context.committee_state().members[0].status == CommitteeMemberStatus.EXPIRED
-        )
+        assert context.committee_state().members[0].status == CommitteeMemberStatus.EXPIRED
 
     def test_resigned_member_has_no_hot_credential(self, context):
         context.api.governance_committee.return_value = _committee_ns()
         assert context.committee_state().members[1].hot_credential is None
 
     def test_dissolved_committee(self, context):
-        context.api.governance_committee.return_value = _ns(
-            {"is_dissolved": True, "quorum": None, "members": []}
-        )
+        context.api.governance_committee.return_value = _ns({"is_dissolved": True, "quorum": None, "members": []})
         state = context.committee_state()
         assert state.members == []
         assert state.threshold is None

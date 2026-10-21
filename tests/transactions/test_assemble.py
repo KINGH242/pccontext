@@ -8,7 +8,6 @@ from pycardano import (
     InvalidBefore,
     InvalidHereAfter,
     Metadata,
-    NativeScript,
     NonEmptyOrderedSet,
     PaymentSigningKey,
     PaymentVerificationKey,
@@ -74,12 +73,8 @@ def test_assemble_transaction(
     )
     transaction.auxiliary_data = auxiliary_data
 
-    vk1 = VerificationKey.from_cbor(
-        "58206443a101bdb948366fc87369336224595d36d8b0eee5602cba8b81a024e58473"
-    )
-    vk2 = VerificationKey.from_cbor(
-        "58206443a101bdb948366fc87369336224595d36d8b0eee5602cba8b81a024e58475"
-    )
+    vk1 = VerificationKey.from_cbor("58206443a101bdb948366fc87369336224595d36d8b0eee5602cba8b81a024e58473")
+    vk2 = VerificationKey.from_cbor("58206443a101bdb948366fc87369336224595d36d8b0eee5602cba8b81a024e58475")
     spk1 = ScriptPubkey(key_hash=vk1.hash())
     spk2 = ScriptPubkey(key_hash=vk2.hash())
     before = InvalidHereAfter(123456789)
@@ -116,12 +111,8 @@ def test_assemble_transaction(
     transaction.transaction_witness_set.vkey_witnesses = initial_vkey_witnesses
 
     vkey_witnesses = [
-        VerificationKeyWitness(
-            payment_vkey, payment_skey.sign(transaction.transaction_body.hash())
-        ),
-        VerificationKeyWitness(
-            stake_vkey, stake_skey.sign(transaction.transaction_body.hash())
-        ),
+        VerificationKeyWitness(payment_vkey, payment_skey.sign(transaction.transaction_body.hash())),
+        VerificationKeyWitness(stake_vkey, stake_skey.sign(transaction.transaction_body.hash())),
     ]
 
     assembled_tx = assemble_transaction(

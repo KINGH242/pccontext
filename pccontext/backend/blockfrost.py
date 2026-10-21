@@ -120,9 +120,7 @@ def _decode_op_cert(op_cert: Union[bytes, str]) -> Tuple[int, int]:
         body = cbor2.loads(raw)[0]
         return int(body[1]), int(body[2])
     except Exception as e:
-        raise BlockfrostError(
-            f"Failed to decode the operational certificate: {e}"
-        ) from e
+        raise BlockfrostError(f"Failed to decode the operational certificate: {e}") from e
 
 
 def _relay(relay: Namespace) -> Optional[Relay]:
@@ -204,9 +202,7 @@ class BlockFrostChainContext(ChainContext):
         elif project_id.startswith("preview"):
             self._network = Network.PREVIEW
         else:
-            raise ValueError(
-                "Project ID might not be valid. Or try specifying the network explicitly."
-            )
+            raise ValueError("Project ID might not be valid. Or try specifying the network explicitly.")
 
         if base_url is not None:
             self._base_url = base_url
@@ -217,9 +213,7 @@ class BlockFrostChainContext(ChainContext):
         elif self._network == Network.PREVIEW:
             self._base_url = ApiUrls.preview.value
         else:
-            raise ValueError(
-                "Project ID might not be valid. Or try specifying the network explicitly."
-            )
+            raise ValueError("Project ID might not be valid. Or try specifying the network explicitly.")
 
         self._project_id = project_id
 
@@ -234,9 +228,7 @@ class BlockFrostChainContext(ChainContext):
                     f"Failed to fetch epoch information. Please check your project ID and network: {e.message}"
                 ) from e
             else:
-                raise BlockfrostError(
-                    f"An error occurred while fetching epoch information: {e.message}"
-                ) from e
+                raise BlockfrostError(f"An error occurred while fetching epoch information: {e.message}") from e
 
         self._genesis_param = None
         self._protocol_param = None
@@ -335,29 +327,19 @@ class BlockFrostChainContext(ChainContext):
             self._protocol_param = ProtocolParameters.from_json(params)
         return self._protocol_param.to_pycardano()
 
-    def _get_script(
-        self, script_hash: str
-    ) -> Union[PlutusV1Script, PlutusV2Script, PlutusV3Script, NativeScript]:
+    def _get_script(self, script_hash: str) -> Union[PlutusV1Script, PlutusV2Script, PlutusV3Script, NativeScript]:
         script_type = self.api.script(script_hash).type
         if script_type == "plutusV1":
-            v1script = PlutusV1Script(
-                bytes.fromhex(self.api.script_cbor(script_hash).cbor)
-            )
+            v1script = PlutusV1Script(bytes.fromhex(self.api.script_cbor(script_hash).cbor))
             return _try_fix_script(script_hash, v1script)
         elif script_type == "plutusV2":
-            v2script = PlutusV2Script(
-                bytes.fromhex(self.api.script_cbor(script_hash).cbor)
-            )
+            v2script = PlutusV2Script(bytes.fromhex(self.api.script_cbor(script_hash).cbor))
             return _try_fix_script(script_hash, v2script)
         elif script_type == "plutusV3":
-            v3script = PlutusV3Script(
-                bytes.fromhex(self.api.script_cbor(script_hash).cbor)
-            )
+            v3script = PlutusV3Script(bytes.fromhex(self.api.script_cbor(script_hash).cbor))
             return _try_fix_script(script_hash, v3script)
         else:
-            script_json: JsonDict = self.api.script_json(
-                script_hash, return_type="json"
-            )["json"]
+            script_json: JsonDict = self.api.script_json(script_hash, return_type="json")["json"]
             return NativeScript.from_dict(script_json)
 
     def _utxos(self, address: str) -> List[UTxO]:
@@ -372,9 +354,7 @@ class BlockFrostChainContext(ChainContext):
         utxos = []
 
         for result in results:
-            tx_in = TransactionInput.from_primitive(
-                [result.tx_hash, result.output_index]
-            )
+            tx_in = TransactionInput.from_primitive([result.tx_hash, result.output_index])
             amount = result.amount
             lovelace_amount = 0
             multi_assets = MultiAsset()
@@ -394,9 +374,7 @@ class BlockFrostChainContext(ChainContext):
             amount = Value(lovelace_amount, multi_assets)
 
             datum_hash = (
-                DatumHash.from_primitive(result.data_hash)
-                if result.data_hash and result.inline_datum is None
-                else None
+                DatumHash.from_primitive(result.data_hash) if result.data_hash and result.inline_datum is None else None
             )
 
             datum = None
@@ -406,10 +384,7 @@ class BlockFrostChainContext(ChainContext):
 
             script = None
 
-            if (
-                hasattr(result, "reference_script_hash")
-                and result.reference_script_hash
-            ):
+            if hasattr(result, "reference_script_hash") and result.reference_script_hash:
                 script = self._get_script(result.reference_script_hash)
 
             tx_out = TransactionOutput(
@@ -449,16 +424,10 @@ class BlockFrostChainContext(ChainContext):
         except ApiError as e:
             if e.status_code == 404:
                 return None
-            raise BlockfrostError(
-                f"Failed to fetch the UTxOs of transaction {tx_hash}. {e}"
-            ) from e
+            raise BlockfrostError(f"Failed to fetch the UTxOs of transaction {tx_hash}. {e}") from e
 
         result = next(
-            (
-                output
-                for output in tx_utxos.outputs
-                if output.output_index == output_index
-            ),
+            (output for output in tx_utxos.outputs if output.output_index == output_index),
             None,
         )
         if result is None:
@@ -483,17 +452,11 @@ class BlockFrostChainContext(ChainContext):
         inline_datum = getattr(result, "inline_datum", None)
         data_hash = getattr(result, "data_hash", None)
 
-        datum_hash = (
-            DatumHash.from_primitive(data_hash)
-            if data_hash and inline_datum is None
-            else None
-        )
+        datum_hash = DatumHash.from_primitive(data_hash) if data_hash and inline_datum is None else None
         datum = RawCBOR(bytes.fromhex(inline_datum)) if inline_datum else None
 
         reference_script_hash = getattr(result, "reference_script_hash", None)
-        script = (
-            self._get_script(reference_script_hash) if reference_script_hash else None
-        )
+        script = self._get_script(reference_script_hash) if reference_script_hash else None
 
         tx_out = TransactionOutput(
             Address.from_primitive(result.address),
@@ -586,9 +549,7 @@ class BlockFrostChainContext(ChainContext):
                 )
             ]
         except ApiError as e:
-            raise BlockfrostError(
-                f"Failed to fetch stake address info for {stake_address}. {e}"
-            ) from e
+            raise BlockfrostError(f"Failed to fetch stake address info for {stake_address}. {e}") from e
 
     def stake_pools(self) -> List[PoolOperator]:
         """Get every stake pool registered on the chain.
@@ -631,9 +592,7 @@ class BlockFrostChainContext(ChainContext):
             metadata = self.api.pool_metadata(pool_id)
         except ApiError as e:
             if strict:
-                raise PoolMetadataError(
-                    f"Failed to fetch the off-chain metadata of stake pool {pool_id}. {e}"
-                ) from e
+                raise PoolMetadataError(f"Failed to fetch the off-chain metadata of stake pool {pool_id}. {e}") from e
             return None
 
         url = getattr(metadata, "url", None)
@@ -641,15 +600,10 @@ class BlockFrostChainContext(ChainContext):
 
         if not url or not metadata_hash:
             if strict:
-                raise PoolMetadataError(
-                    f"Stake pool {pool_id} has no off-chain metadata registered."
-                )
+                raise PoolMetadataError(f"Stake pool {pool_id} has no off-chain metadata registered.")
             return None
 
-        if strict and not any(
-            getattr(metadata, name, None)
-            for name in ("ticker", "name", "description", "homepage")
-        ):
+        if strict and not any(getattr(metadata, name, None) for name in ("ticker", "name", "description", "homepage")):
             raise PoolMetadataError(
                 f"Blockfrost could not resolve the off-chain metadata of stake pool "
                 f"{pool_id} at {url} against its registered hash."
@@ -681,9 +635,7 @@ class BlockFrostChainContext(ChainContext):
         counter = getattr(block, "op_cert_counter", None)
         return int(counter) if counter is not None else None
 
-    def _retirement_status(
-        self, pool_id: str, tx_hash: str
-    ) -> Tuple[PoolStatus, Optional[int]]:
+    def _retirement_status(self, pool_id: str, tx_hash: str) -> Tuple[PoolStatus, Optional[int]]:
         """Resolve a pool's retirement certificate into a status.
 
         Args:
@@ -733,9 +685,7 @@ class BlockFrostChainContext(ChainContext):
             pool = self.api.pool(pool_id)
             relays = self.api.pool_relays(pool_id)
         except ApiError as e:
-            raise BlockfrostError(
-                f"Failed to fetch stake pool info for {pool_id}. {e}"
-            ) from e
+            raise BlockfrostError(f"Failed to fetch stake pool info for {pool_id}. {e}") from e
 
         pool_metadata = self._pool_metadata(pool_id, strict)
 
@@ -750,9 +700,7 @@ class BlockFrostChainContext(ChainContext):
             pledge=int(pool.declared_pledge),
             cost=int(pool.fixed_cost),
             margin=margin,
-            reward_account=RewardAccountHash(
-                bytes(Address.from_primitive(pool.reward_account).to_primitive())
-            ),
+            reward_account=RewardAccountHash(bytes(Address.from_primitive(pool.reward_account).to_primitive())),
             pool_owners=[_owner_key_hash(owner) for owner in pool.owners],
             relays=[relay for relay in map(_relay, relays) if relay is not None],
             pool_metadata=pool_metadata,
@@ -815,9 +763,7 @@ class BlockFrostChainContext(ChainContext):
         try:
             blocks = self.api.pool_blocks(pool_id, count=1, order="desc")
         except ApiError as e:
-            raise BlockfrostError(
-                f"Failed to fetch the blocks minted by stake pool {pool_id}. {e}"
-            ) from e
+            raise BlockfrostError(f"Failed to fetch the blocks minted by stake pool {pool_id}. {e}") from e
 
         if not blocks:
             raise BlockfrostError(
@@ -828,16 +774,11 @@ class BlockFrostChainContext(ChainContext):
         try:
             block = self.api.block(blocks[0])
         except ApiError as e:
-            raise BlockfrostError(
-                f"Failed to fetch block {blocks[0]} for stake pool {pool_id}. {e}"
-            ) from e
+            raise BlockfrostError(f"Failed to fetch block {blocks[0]} for stake pool {pool_id}. {e}") from e
 
         counter = getattr(block, "op_cert_counter", None)
         if counter is None:
-            raise BlockfrostError(
-                f"Blockfrost reported no operational certificate counter for block "
-                f"{blocks[0]}."
-            )
+            raise BlockfrostError(f"Blockfrost reported no operational certificate counter for block {blocks[0]}.")
 
         on_chain_op_cert_count = int(counter)
 
@@ -866,9 +807,7 @@ class BlockFrostChainContext(ChainContext):
         try:
             network_info = self.api.network()
         except ApiError as e:
-            raise BlockfrostError(
-                f"Failed to fetch the network information. {e}"
-            ) from e
+            raise BlockfrostError(f"Failed to fetch the network information. {e}") from e
 
         return int(network_info.supply.treasury)
 
@@ -955,9 +894,7 @@ class BlockFrostChainContext(ChainContext):
         except ApiError as e:
             if e.status_code == 404:
                 return None
-            raise BlockfrostError(
-                f"Failed to fetch metadata for DRep {drep_id}. {e}"
-            ) from e
+            raise BlockfrostError(f"Failed to fetch metadata for DRep {drep_id}. {e}") from e
 
         url = getattr(metadata, "url", None)
         data_hash = getattr(metadata, "hash", None)
@@ -986,9 +923,7 @@ class BlockFrostChainContext(ChainContext):
             result = self.api.governance_drep(drep_id)
         except ApiError as e:
             if e.status_code == 404:
-                return DRepInfo(
-                    drep=drep, active=False, stake=0, status=DRepStatus.NOT_REGISTERED
-                )
+                return DRepInfo(drep=drep, active=False, stake=0, status=DRepStatus.NOT_REGISTERED)
             raise BlockfrostError(f"Failed to fetch DRep {drep_id}. {e}") from e
 
         # Blockfrost reports neither the deposit nor an expiry epoch for a DRep,
@@ -1015,9 +950,7 @@ class BlockFrostChainContext(ChainContext):
         try:
             dreps = self.api.governance_dreps(gather_pages=True)
         except ApiError as e:
-            raise BlockfrostError(
-                f"Failed to fetch the DRep stake distribution. {e}"
-            ) from e
+            raise BlockfrostError(f"Failed to fetch the DRep stake distribution. {e}") from e
 
         return [
             DRepStakeEntry(
@@ -1050,9 +983,7 @@ class BlockFrostChainContext(ChainContext):
         try:
             return self.api.governance_proposal_by_gov_action_id(gov_action_id)
         except ApiError as e:
-            raise BlockfrostError(
-                f"Failed to fetch governance proposal {gov_action_id}. {e}"
-            ) from e
+            raise BlockfrostError(f"Failed to fetch governance proposal {gov_action_id}. {e}") from e
 
     def gov_action_info(self, gov_action_id: GovActionId) -> GovActionInfo:
         """Get the lifecycle information for a governance action.
@@ -1083,9 +1014,7 @@ class BlockFrostChainContext(ChainContext):
             expired_epoch=self._as_epoch(getattr(detail, "expired_epoch", None)),
         )
 
-    def _split_votes(
-        self, raw_votes: List[Any]
-    ) -> Tuple[List[CommitteeVote], List[DRepVote], List[StakePoolVote]]:
+    def _split_votes(self, raw_votes: List[Any]) -> Tuple[List[CommitteeVote], List[DRepVote], List[StakePoolVote]]:
         """Split Blockfrost's flat vote list by voter role.
 
         Blockfrost returns one list with a ``voter_role`` discriminator, where
@@ -1120,13 +1049,9 @@ class BlockFrostChainContext(ChainContext):
         raw_votes: List[Any] = []
         if encoded:
             try:
-                raw_votes = self.api.governance_proposal_votes_by_gov_action_id(
-                    encoded, gather_pages=True
-                )
+                raw_votes = self.api.governance_proposal_votes_by_gov_action_id(encoded, gather_pages=True)
             except ApiError as e:
-                raise BlockfrostError(
-                    f"Failed to fetch votes for governance action {encoded}. {e}"
-                ) from e
+                raise BlockfrostError(f"Failed to fetch votes for governance action {encoded}. {e}") from e
 
         committee, dreps, pools = self._split_votes(raw_votes)
         deposit = getattr(proposal, "deposit", None)
@@ -1183,18 +1108,14 @@ class BlockFrostChainContext(ChainContext):
         try:
             proposals = self.api.governance_proposals(gather_pages=True)
         except ApiError as e:
-            raise BlockfrostError(
-                f"Failed to fetch the governance proposal list. {e}"
-            ) from e
+            raise BlockfrostError(f"Failed to fetch the governance proposal list. {e}") from e
 
         results = []
         for proposal in proposals:
             gov_action_id = self._gov_action_id(proposal)
             if gov_action_id is None:
                 continue
-            results.append(
-                self._gov_action_votes(self._proposal_detail(gov_action_id.encode()))
-            )
+            results.append(self._gov_action_votes(self._proposal_detail(gov_action_id.encode())))
         return results
 
     # -- Constitutional committee -----------------------------------------
@@ -1207,16 +1128,12 @@ class BlockFrostChainContext(ChainContext):
         if cold_hex:
             payload = bytes.fromhex(cold_hex)
             cold = CommitteeColdCredential(
-                ScriptHash(payload)
-                if getattr(member, "cc_cold_has_script", False)
-                else VerificationKeyHash(payload)
+                ScriptHash(payload) if getattr(member, "cc_cold_has_script", False) else VerificationKeyHash(payload)
             )
         if hot_hex:
             payload = bytes.fromhex(hot_hex)
             hot = CommitteeHotCredential(
-                ScriptHash(payload)
-                if getattr(member, "cc_hot_has_script", False)
-                else VerificationKeyHash(payload)
+                ScriptHash(payload) if getattr(member, "cc_hot_has_script", False) else VerificationKeyHash(payload)
             )
 
         expiration = getattr(member, "expiration_epoch", None)
@@ -1252,27 +1169,18 @@ class BlockFrostChainContext(ChainContext):
             :class:`BlockfrostError`: When the committee cannot be fetched.
         """
         try:
-            committee = self._require_endpoint(
-                "governance_committee", "committee_state"
-            )()
+            committee = self._require_endpoint("governance_committee", "committee_state")()
         except ApiError as e:
             raise BlockfrostError(f"Failed to fetch the committee state. {e}") from e
 
         quorum = getattr(committee, "quorum", None)
         numerator = getattr(quorum, "numerator", None)
         denominator = getattr(quorum, "denominator", None)
-        threshold = (
-            int(numerator) / int(denominator)
-            if numerator is not None and denominator
-            else None
-        )
+        threshold = int(numerator) / int(denominator) if numerator is not None and denominator else None
 
         epoch = self.epoch
         return CommitteeStateInfo(
-            members=[
-                self._committee_member(m, epoch)
-                for m in (getattr(committee, "members", None) or [])
-            ],
+            members=[self._committee_member(m, epoch) for m in (getattr(committee, "members", None) or [])],
             threshold=threshold,
         )
 
@@ -1322,11 +1230,6 @@ class BlockFrostChainContext(ChainContext):
         try:
             pools = self.api.pools_extended(gather_pages=True)
         except ApiError as e:
-            raise BlockfrostError(
-                f"Failed to fetch the stake pool stake distribution. {e}"
-            ) from e
+            raise BlockfrostError(f"Failed to fetch the stake pool stake distribution. {e}") from e
 
-        return [
-            SPOStakeEntry(pool_id=pool.pool_id, stake=int(pool.active_stake))
-            for pool in pools
-        ]
+        return [SPOStakeEntry(pool_id=pool.pool_id, stake=int(pool.active_stake)) for pool in pools]

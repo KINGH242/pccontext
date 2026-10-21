@@ -47,7 +47,5 @@ class CommitteeStateInfo(BaseModel):
     members: List[CommitteeMemberInfo] = field(default_factory=list)
     """The committee's members."""
 
-    threshold: Optional[float] = field(
-        default=None, metadata={"aliases": ["threshold", "quorum"]}
-    )
+    threshold: Optional[float] = field(default=None, metadata={"aliases": ["threshold", "quorum"]})
     """The fraction of members that must vote yes for the committee to assent."""

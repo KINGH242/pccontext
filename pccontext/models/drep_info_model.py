@@ -42,9 +42,7 @@ class DRepInfo(BaseModel):
     and never sees voting power — so treating a missing value as zero would
     report every DRep there as having no support."""
 
-    expiry: Optional[int] = field(
-        default=None, metadata={"aliases": ["expiry", "expiresAfter", "expires_after"]}
-    )
+    expiry: Optional[int] = field(default=None, metadata={"aliases": ["expiry", "expiresAfter", "expires_after"]})
     """The epoch after which the DRep's registration lapses."""
 
     status: Optional[DRepStatus] = field(default=None)

@@ -44,9 +44,7 @@ class DRepVote(BaseModel):
 class StakePoolVote(BaseModel):
     """A vote cast on a governance action by a stake pool operator."""
 
-    voter: Optional[str] = field(
-        default=None, metadata={"aliases": ["voter", "pool_id", "poolId"]}
-    )
+    voter: Optional[str] = field(default=None, metadata={"aliases": ["voter", "pool_id", "poolId"]})
     """The voting pool's ID, bech32 encoded."""
 
     vote: Optional[Vote] = field(default=None)
@@ -88,24 +86,12 @@ class GovActionVotes(BaseModel):
 
     anchor: Optional[Anchor] = field(default=None)
 
-    proposed_in: Optional[int] = field(
-        default=None, metadata={"aliases": ["proposed_in", "proposedIn"]}
-    )
-    expires_after: Optional[int] = field(
-        default=None, metadata={"aliases": ["expires_after", "expiresAfter"]}
-    )
-    ratified_epoch: Optional[int] = field(
-        default=None, metadata={"aliases": ["ratified_epoch", "ratifiedEpoch"]}
-    )
-    enacted_epoch: Optional[int] = field(
-        default=None, metadata={"aliases": ["enacted_epoch", "enactedEpoch"]}
-    )
-    dropped_epoch: Optional[int] = field(
-        default=None, metadata={"aliases": ["dropped_epoch", "droppedEpoch"]}
-    )
-    expired_epoch: Optional[int] = field(
-        default=None, metadata={"aliases": ["expired_epoch", "expiredEpoch"]}
-    )
+    proposed_in: Optional[int] = field(default=None, metadata={"aliases": ["proposed_in", "proposedIn"]})
+    expires_after: Optional[int] = field(default=None, metadata={"aliases": ["expires_after", "expiresAfter"]})
+    ratified_epoch: Optional[int] = field(default=None, metadata={"aliases": ["ratified_epoch", "ratifiedEpoch"]})
+    enacted_epoch: Optional[int] = field(default=None, metadata={"aliases": ["enacted_epoch", "enactedEpoch"]})
+    dropped_epoch: Optional[int] = field(default=None, metadata={"aliases": ["dropped_epoch", "droppedEpoch"]})
+    expired_epoch: Optional[int] = field(default=None, metadata={"aliases": ["expired_epoch", "expiredEpoch"]})
 
     @property
     def status(self) -> Optional[GovActionStatus]:

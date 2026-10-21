@@ -3,13 +3,13 @@ import logging
 __all__ = ["logger"]
 
 # create logger
-logger = logging.getLogger("PyCardano Chain Context")  # type: ignore
+logger = logging.getLogger("PyCardano Chain Context")
 
 # create console handler and set level to debug
-ch = logging.StreamHandler()  # type: ignore
+ch = logging.StreamHandler()
 
 # create formatter
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")  # type: ignore
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 # add formatter to ch
 ch.setFormatter(formatter)

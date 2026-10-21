@@ -14,7 +14,4 @@ def test_stake_address_registration_success(chain_context):
     )
     transaction = stake_address_registration(chain_context, vk, address)
     assert transaction.valid is True
-    assert (
-        transaction.transaction_body.certificates[0].stake_credential.credential
-        == vk.hash()
-    )
+    assert transaction.transaction_body.certificates[0].stake_credential.credential == vk.hash()

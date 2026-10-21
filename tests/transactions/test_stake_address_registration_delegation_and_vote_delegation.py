@@ -30,9 +30,7 @@ from pccontext.transactions.stake_address_registration_delegation_and_vote_deleg
         ),
     ],
 )
-def test_stake_address_registration_delegation_and_vote_delegation_success(
-    chain_context, drep_kind, drep_id
-):
+def test_stake_address_registration_delegation_and_vote_delegation_success(chain_context, drep_kind, drep_id):
     """
     Test successful stake address registration and stake delegation and vote delegation.
     """

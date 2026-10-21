@@ -25,7 +25,5 @@ def get_drep(
             drep_bytes = drep_bytes[1:]
         drep = DRep(drep_kind, VerificationKeyHash(drep_bytes))
     else:
-        raise ValueError(
-            "DRep ID must be provided for DRepKind SCRIPT_HASH or VERIFICATION_KEY_HASH."
-        )
+        raise ValueError("DRep ID must be provided for DRepKind SCRIPT_HASH or VERIFICATION_KEY_HASH.")
     return drep

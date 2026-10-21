@@ -8,9 +8,7 @@ def main():
     Get the protocol parameters from Offline Transfer File
     """
 
-    chain_context = OfflineTransferFileContext(
-        offline_transfer_file=Path("/path/to/offline-transfer.json")
-    )
+    chain_context = OfflineTransferFileContext(offline_transfer_file=Path("/path/to/offline-transfer.json"))
 
     print(chain_context.protocol_param)
 

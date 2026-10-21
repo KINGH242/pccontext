@@ -34,9 +34,6 @@ from pycardano import (
     PoolMetadataHash,
     PoolOperator,
     PoolParams,
-)
-from pycardano import ProtocolParameters as PyCardanoProtocolParameters
-from pycardano import (
     RawCBOR,
     Relay,
     RewardAccountHash,
@@ -53,6 +50,7 @@ from pycardano import (
     Vote,
     VrfKeyHash,
 )
+from pycardano import ProtocolParameters as PyCardanoProtocolParameters
 
 __all__ = ["KoiosChainContext"]
 
@@ -216,9 +214,7 @@ class KoiosChainContext(ChainContext):
 
         return utxos
 
-    def _utxo_from_result(
-        self, result: JsonDict, address: Optional[str] = None
-    ) -> UTxO:
+    def _utxo_from_result(self, result: JsonDict, address: Optional[str] = None) -> UTxO:
         """Build a UTxO from one Koios result row.
 
         Shared by the address query and the single-UTxO lookup, which return the
@@ -252,9 +248,7 @@ class KoiosChainContext(ChainContext):
 
         raw_datum_hash = result.get("data_hash") or result.get("datum_hash")
         datum_hash = (
-            DatumHash.from_primitive(raw_datum_hash)
-            if raw_datum_hash and result.get("inline_datum") is None
-            else None
+            DatumHash.from_primitive(raw_datum_hash) if raw_datum_hash and result.get("inline_datum") is None else None
         )
 
         datum = None
@@ -295,9 +289,7 @@ class KoiosChainContext(ChainContext):
         try:
             response = self.api.submit_tx(f.name)
         except RequestException as e:
-            raise TransactionFailedException(
-                f"Failed to submit transaction. Error: {e}"
-            ) from e
+            raise TransactionFailedException(f"Failed to submit transaction. Error: {e}") from e
         finally:
             os.remove(f.name)
         return response
@@ -425,24 +417,17 @@ class KoiosChainContext(ChainContext):
         url = result.get("meta_url")
         expected = result.get("meta_hash")
         if not url or not expected:
-            raise PoolMetadataError(
-                "Pool has no off-chain metadata registered, so it cannot be verified."
-            )
+            raise PoolMetadataError("Pool has no off-chain metadata registered, so it cannot be verified.")
 
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
         except RequestException as e:
-            raise PoolMetadataError(
-                f"Failed to fetch pool metadata from {url}. Error: {e}"
-            )
+            raise PoolMetadataError(f"Failed to fetch pool metadata from {url}. Error: {e}")
 
         actual = hashlib.blake2b(response.content, digest_size=32).hexdigest()
         if actual != expected:
-            raise PoolMetadataError(
-                f"Pool metadata hash mismatch for {url}: "
-                f"registered {expected}, computed {actual}."
-            )
+            raise PoolMetadataError(f"Pool metadata hash mismatch for {url}: registered {expected}, computed {actual}.")
 
     def stake_pool_info(self, pool_id: str, strict: bool = False) -> StakePoolInfo:
         """Get a stake pool's registered parameters and stake figures.
@@ -490,13 +475,9 @@ class KoiosChainContext(ChainContext):
                 pledge=self._as_int(result.get("pledge")) or 0,
                 cost=self._as_int(result.get("fixed_cost")) or 0,
                 margin=Fraction(str(result.get("margin") or 0)).limit_denominator(),
-                reward_account=RewardAccountHash(
-                    bytes(Address.decode(result["reward_addr"]).to_primitive())
-                ),
+                reward_account=RewardAccountHash(bytes(Address.decode(result["reward_addr"]).to_primitive())),
                 pool_owners=[
-                    VerificationKeyHash(
-                        bytes(Address.decode(owner).staking_part.payload)
-                    )
+                    VerificationKeyHash(bytes(Address.decode(owner).staking_part.payload))
                     for owner in (result.get("owners") or [])
                 ],
                 relays=[self._relay(r) for r in (result.get("relays") or [])],
@@ -511,11 +492,7 @@ class KoiosChainContext(ChainContext):
             live_pledge=self._as_int(result.get("live_pledge")),
             live_stake=self._as_int(result.get("live_stake")),
             active_stake=self._as_int(result.get("active_stake")),
-            active_size=(
-                Decimal(str(result["sigma"]))
-                if result.get("sigma") is not None
-                else None
-            ),
+            active_size=(Decimal(str(result["sigma"])) if result.get("sigma") is not None else None),
             opcert_counter=self._as_int(result.get("op_cert_counter")),
             status=self._pool_status(result),
             retiring_epoch=self._as_int(result.get("retiring_epoch")),
@@ -597,10 +574,7 @@ class KoiosChainContext(ChainContext):
             ValueError: If ``pool`` is not given.
         """
         if pool is None:
-            raise ValueError(
-                "Koios queries KES period information by pool ID, so a pool "
-                "operator must be provided."
-            )
+            raise ValueError("Koios queries KES period information by pool ID, so a pool operator must be provided.")
 
         # Koios is queried by bech32 pool ID; PoolOperator.encode() produces it.
         pool_id = pool.encode()
@@ -663,9 +637,7 @@ class KoiosChainContext(ChainContext):
             raise
 
         if not results or not isinstance(results, list):
-            return DRepInfo(
-                drep=drep, active=False, stake=0, status=DRepStatus.NOT_REGISTERED
-            )
+            return DRepInfo(drep=drep, active=False, stake=0, status=DRepStatus.NOT_REGISTERED)
 
         result = results[0]
         anchor = None
@@ -736,9 +708,9 @@ class KoiosChainContext(ChainContext):
         epoch = self.epoch
         try:
             results = self._paginate(
-                lambda rng: self._require_endpoint(
-                    "get_drep_voting_power_history", "drep_stake_distribution"
-                )(epoch_no=epoch, content_range=rng)
+                lambda rng: self._require_endpoint("get_drep_voting_power_history", "drep_stake_distribution")(
+                    epoch_no=epoch, content_range=rng
+                )
             )
         except RequestException as e:
             logger.error(f"Failed to get the DRep stake distribution. Error: {e}")
@@ -749,9 +721,7 @@ class KoiosChainContext(ChainContext):
             drep = None
             with contextlib.suppress(Exception):
                 drep = DRep.decode(result["drep_id"])
-            entries.append(
-                DRepStakeEntry(drep=drep, stake=self._as_int(result.get("amount")))
-            )
+            entries.append(DRepStakeEntry(drep=drep, stake=self._as_int(result.get("amount"))))
         return entries
 
     def spo_stake_distribution(self) -> List[SPOStakeEntry]:
@@ -766,9 +736,9 @@ class KoiosChainContext(ChainContext):
         epoch = self.epoch
         try:
             results = self._paginate(
-                lambda rng: self._require_endpoint(
-                    "get_pool_voting_power_history", "spo_stake_distribution"
-                )(epoch_no=epoch, content_range=rng)
+                lambda rng: self._require_endpoint("get_pool_voting_power_history", "spo_stake_distribution")(
+                    epoch_no=epoch, content_range=rng
+                )
             )
         except RequestException as e:
             logger.error(f"Failed to get the pool stake distribution. Error: {e}")
@@ -788,16 +758,12 @@ class KoiosChainContext(ChainContext):
         if member.get("cc_cold_hex"):
             payload = bytes.fromhex(member["cc_cold_hex"])
             cold = CommitteeColdCredential(
-                ScriptHash(payload)
-                if member.get("cc_cold_has_script")
-                else VerificationKeyHash(payload)
+                ScriptHash(payload) if member.get("cc_cold_has_script") else VerificationKeyHash(payload)
             )
         if member.get("cc_hot_hex"):
             payload = bytes.fromhex(member["cc_hot_hex"])
             hot = CommitteeHotCredential(
-                ScriptHash(payload)
-                if member.get("cc_hot_has_script")
-                else VerificationKeyHash(payload)
+                ScriptHash(payload) if member.get("cc_hot_has_script") else VerificationKeyHash(payload)
             )
 
         expiration = self._as_int(member.get("expiration_epoch"))
@@ -843,14 +809,10 @@ class KoiosChainContext(ChainContext):
         epoch = self.epoch
         numerator = self._as_int(result.get("quorum_numerator"))
         denominator = self._as_int(result.get("quorum_denominator"))
-        threshold = (
-            numerator / denominator if numerator is not None and denominator else None
-        )
+        threshold = numerator / denominator if numerator is not None and denominator else None
 
         return CommitteeStateInfo(
-            members=[
-                self._committee_member(m, epoch) for m in (result.get("members") or [])
-            ],
+            members=[self._committee_member(m, epoch) for m in (result.get("members") or [])],
             threshold=threshold,
         )
 
@@ -895,9 +857,9 @@ class KoiosChainContext(ChainContext):
         """
         try:
             return self._paginate(
-                lambda rng: self._require_endpoint(
-                    "get_proposal_list", "Governance proposal queries"
-                )(content_range=rng)
+                lambda rng: self._require_endpoint("get_proposal_list", "Governance proposal queries")(
+                    content_range=rng
+                )
             )
         except RequestException as e:
             logger.error(f"Failed to get the governance proposal list. Error: {e}")
@@ -947,17 +909,10 @@ class KoiosChainContext(ChainContext):
             expired_epoch=self._as_int(proposal.get("expired_epoch")),
         )
 
-    def _votes_for(
-        self, proposal_id: str
-    ) -> Tuple[List[CommitteeVote], List[DRepVote], List[StakePoolVote]]:
+    def _votes_for(self, proposal_id: str) -> Tuple[List[CommitteeVote], List[DRepVote], List[StakePoolVote]]:
         """Fetch and split a proposal's votes by voter role."""
         try:
-            raw_votes = (
-                self._require_endpoint("get_proposal_votes", "Governance vote queries")(
-                    proposal_id
-                )
-                or []
-            )
+            raw_votes = self._require_endpoint("get_proposal_votes", "Governance vote queries")(proposal_id) or []
         except RequestException as e:
             logger.error(f"Failed to get votes for {proposal_id}. Error: {e}")
             raise
@@ -1063,7 +1018,5 @@ class KoiosChainContext(ChainContext):
                 for result in results
             ]
         except RequestException as e:
-            logger.error(
-                f"Failed to get Stake Address info for address {stake_address}. Error: {e}"
-            )
+            logger.error(f"Failed to get Stake Address info for address {stake_address}. Error: {e}")
         return info

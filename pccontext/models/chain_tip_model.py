@@ -29,13 +29,9 @@ class ChainTip(BaseModel):
     )
     block: Optional[int] = field(
         default=None,
-        metadata={
-            "aliases": ["block", "block_no", "blockNo", "height", "block_height"]
-        },
+        metadata={"aliases": ["block", "block_no", "blockNo", "height", "block_height"]},
     )
-    epoch: Optional[int] = field(
-        default=None, metadata={"aliases": ["epoch", "epoch_no", "epochNo"]}
-    )
+    epoch: Optional[int] = field(default=None, metadata={"aliases": ["epoch", "epoch_no", "epochNo"]})
     era: Optional[Era] = field(default=None, metadata={"aliases": ["era"]})
     sync_progress: Optional[float] = field(
         default=None,

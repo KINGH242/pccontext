@@ -13,7 +13,7 @@ from pycardano import Address, PoolOperator, TransactionId
 from pccontext import Network, UnsupportedNetworkError
 
 
-class BlockchainExplorerProtocol(object, metaclass=ABCMeta):
+class BlockchainExplorerProtocol(metaclass=ABCMeta):
     """
     Abstract base class defining the protocol for blockchain explorer implementations.
 
@@ -35,9 +35,7 @@ class BlockchainExplorerProtocol(object, metaclass=ABCMeta):
         :param network: The network to view the account on
         :return: The URL to view the account on the blockchain explorer
         """
-        raise NotImplementedError(
-            f"view_account not implemented for this explorer: {self.__class__.__name__}"
-        )
+        raise NotImplementedError(f"view_account not implemented for this explorer: {self.__class__.__name__}")
 
     def view_address(self, address: Address, network: Network) -> str:
         """
@@ -46,9 +44,7 @@ class BlockchainExplorerProtocol(object, metaclass=ABCMeta):
         :param network: The network to view the address on
         :return: The URL to view the address on the blockchain explorer
         """
-        raise NotImplementedError(
-            f"view_address not implemented for this explorer: {self.__class__.__name__}"
-        )
+        raise NotImplementedError(f"view_address not implemented for this explorer: {self.__class__.__name__}")
 
     def view_block(self, block_id: str, network: Network) -> str:
         """
@@ -57,9 +53,7 @@ class BlockchainExplorerProtocol(object, metaclass=ABCMeta):
         :param network: The network to view the block on
         :return: The URL to view the block on the blockchain explorer
         """
-        raise NotImplementedError(
-            f"view_block not implemented for this explorer: {self.__class__.__name__}"
-        )
+        raise NotImplementedError(f"view_block not implemented for this explorer: {self.__class__.__name__}")
 
     def view_pool(self, pool_id: PoolOperator, network: Network) -> str:
         """
@@ -68,9 +62,7 @@ class BlockchainExplorerProtocol(object, metaclass=ABCMeta):
         :param network: The network to view the pool on
         :return: The URL to view the pool on the blockchain explorer
         """
-        raise NotImplementedError(
-            f"view_pool not implemented for this explorer: {self.__class__.__name__}"
-        )
+        raise NotImplementedError(f"view_pool not implemented for this explorer: {self.__class__.__name__}")
 
     def view_transaction(self, transaction_id: TransactionId, network: Network) -> str:
         """
@@ -79,9 +71,7 @@ class BlockchainExplorerProtocol(object, metaclass=ABCMeta):
         :param network: The network to view the transaction on
         :return: The URL to view the transaction on the blockchain explorer
         """
-        raise NotImplementedError(
-            f"view_transaction not implemented for this explorer: {self.__class__.__name__}"
-        )
+        raise NotImplementedError(f"view_transaction not implemented for this explorer: {self.__class__.__name__}")
 
 
 @dataclass(frozen=True)
@@ -205,9 +195,7 @@ class AdaStat(BlockchainExplorerProtocol):
         :return: URL string for viewing the pool on AdaStat
         """
         if network is Network.MAINNET:
-            return (
-                f"{self._network_urls.mainnet}/pools/{pool.pool_key_hash.payload.hex()}"
-            )
+            return f"{self._network_urls.mainnet}/pools/{pool.pool_key_hash.payload.hex()}"
         raise UnsupportedNetworkError(network.name)
 
     def view_transaction(self, transaction_id: TransactionId, network: Network) -> str:
@@ -276,9 +264,7 @@ class CardanoScan(BlockchainExplorerProtocol):
         try:
             block_number = int(block_id)
         except ValueError as e:
-            raise ValueError(
-                f"Use block number for CardanoScan instead of block id: {block_id}"
-            ) from e
+            raise ValueError(f"Use block number for CardanoScan instead of block id: {block_id}") from e
         if network is Network.MAINNET:
             return f"{self._network_urls.mainnet}/block/{block_number}"
         if network is Network.PREPROD:
@@ -476,9 +462,7 @@ class PoolTool(BlockchainExplorerProtocol):
         try:
             block_number = int(block_id)
         except ValueError as e:
-            raise ValueError(
-                f"Use block number for PoolTool instead of block id: {block_id}"
-            ) from e
+            raise ValueError(f"Use block number for PoolTool instead of block id: {block_id}") from e
         if network is Network.MAINNET:
             return f"{self._network_urls.mainnet}/realtime/{block_number}"
         raise UnsupportedNetworkError(network.name)

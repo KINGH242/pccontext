@@ -79,17 +79,11 @@ class BaseModel:
                     elif field_type == "Optional[Network]":
                         v = Network(v.lower())
                 elif isinstance(v, dict):
-                    init_args[field_name] = cls.property_from_dict(
-                        v, k, field_name, init_args
-                    )
+                    init_args[field_name] = cls.property_from_dict(v, k, field_name, init_args)
                     continue
                 elif isinstance(v, list):
                     init_args[field_name] = [
-                        (
-                            cls.property_from_dict(item, k, field_name, init_args)
-                            if isinstance(item, dict)
-                            else item
-                        )
+                        (cls.property_from_dict(item, k, field_name, init_args) if isinstance(item, dict) else item)
                         for item in v
                     ]
                     continue
@@ -122,9 +116,7 @@ class BaseModel:
 
             try:
                 field_name = (
-                    field.metadata["aliases"][1]
-                    if field.metadata.get("aliases", None) is not None
-                    else field.name
+                    field.metadata["aliases"][1] if field.metadata.get("aliases", None) is not None else field.name
                 )
             except IndexError:
                 field_name = field.metadata["aliases"][0]
@@ -182,9 +174,7 @@ class BaseModel:
             output_multi_asset[str(policy_id)] = {}
             for asset_name in multi_asset[policy_id]:
                 amount = multi_asset[policy_id][asset_name]
-                output_multi_asset[str(policy_id)][
-                    asset_name.payload.decode("utf-8")
-                ] = amount
+                output_multi_asset[str(policy_id)][asset_name.payload.decode("utf-8")] = amount
 
         return {
             "input": {
@@ -197,9 +187,7 @@ class BaseModel:
                     "coin": utxo.output.amount.coin,
                     "multi_asset": output_multi_asset,
                 },
-                "datum_hash": (
-                    str(utxo.output.datum_hash) if utxo.output.datum_hash else None
-                ),
+                "datum_hash": (str(utxo.output.datum_hash) if utxo.output.datum_hash else None),
                 "datum": str(utxo.output.datum) if utxo.output.datum else None,
                 "script": str(utxo.output.script) if utxo.output.script else None,
             },

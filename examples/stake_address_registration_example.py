@@ -18,14 +18,10 @@ def main():
     """
     network = Network.PREPROD
     blockfrost_api_key = os.getenv("BLOCKFROST_API_KEY_PREPROD")
-    chain_context = BlockFrostChainContext(
-        project_id=blockfrost_api_key, network=network
-    )
+    chain_context = BlockFrostChainContext(project_id=blockfrost_api_key, network=network)
 
     payment_signing_key = PaymentSigningKey.generate()
-    payment_verification_key = PaymentVerificationKey.from_signing_key(
-        payment_signing_key
-    )
+    payment_verification_key = PaymentVerificationKey.from_signing_key(payment_signing_key)
 
     stake_signing_key = StakeSigningKey.generate()
     stake_verification_key = StakeVerificationKey.from_signing_key(stake_signing_key)

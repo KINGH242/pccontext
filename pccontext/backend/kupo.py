@@ -85,9 +85,7 @@ class KupoChainContextExtension(ChainContext):
         self._kupo_url = kupo_url
         self._wrapped_backend = wrapped_backend
         self._refetch_chain_tip_interval = refetch_chain_tip_interval
-        self._utxo_cache = TTLCache(
-            ttl=self._refetch_chain_tip_interval, maxsize=utxo_cache_size
-        )
+        self._utxo_cache = TTLCache(ttl=self._refetch_chain_tip_interval, maxsize=utxo_cache_size)
         self._datum_cache = LRUCache(maxsize=datum_cache_size)
 
     @property
@@ -156,9 +154,7 @@ class KupoChainContextExtension(ChainContext):
             return datum
 
         if self._kupo_url is None:
-            raise AssertionError(
-                "kupo_url object attribute has not been assigned properly."
-            )
+            raise AssertionError("kupo_url object attribute has not been assigned properly.")
 
         kupo_datum_url = self._kupo_url + "/datums/" + datum_hash
         datum_result = requests.get(kupo_datum_url).json()
@@ -180,9 +176,7 @@ class KupoChainContextExtension(ChainContext):
             List[UTxO]: A list of UTxOs.
         """
         if self._kupo_url is None:
-            raise AssertionError(
-                "kupo_url object attribute has not been assigned properly."
-            )
+            raise AssertionError("kupo_url object attribute has not been assigned properly.")
 
         kupo_utxo_url = self._kupo_url + "/matches/" + address + "?unspent"
         results = requests.get(kupo_utxo_url).json()
@@ -216,11 +210,7 @@ class KupoChainContextExtension(ChainContext):
                         raise ValueError("Unknown plutus script type")
 
                 datum = None
-                datum_hash = (
-                    DatumHash.from_primitive(result["datum_hash"])
-                    if result["datum_hash"]
-                    else None
-                )
+                datum_hash = DatumHash.from_primitive(result["datum_hash"]) if result["datum_hash"] else None
                 if datum_hash and result.get("datum_type", "inline"):
                     datum = self._get_datum_from_kupo(result["datum_hash"])
 
@@ -237,9 +227,7 @@ class KupoChainContextExtension(ChainContext):
 
                     for asset, quantity in result["value"]["assets"].items():
                         policy_hex, policy, asset_name_hex = extract_asset_info(asset)
-                        multi_assets.setdefault(policy, Asset())[
-                            asset_name_hex
-                        ] = quantity
+                        multi_assets.setdefault(policy, Asset())[asset_name_hex] = quantity
 
                     tx_out = TransactionOutput(
                         Address.from_primitive(address),

@@ -9,7 +9,7 @@ from typing import (
     Any,
     Callable,
     Dict,
-    Iterator,
+    Generator,
     List,
     Optional,
     Tuple,
@@ -245,7 +245,7 @@ class YaciDevkitChainContext(ChainContext):
         return Network.TESTNET
 
     @contextmanager
-    def _client(self) -> Iterator[Client]:
+    def _client(self) -> Generator[Client]:
         """Hand out the generated API client for the duration of one request.
 
         The generated ``Client`` is itself a context manager, but entering it
@@ -273,9 +273,7 @@ class YaciDevkitChainContext(ChainContext):
     def protocol_param(self) -> PyCardanoProtocolParameters:
         if not self._protocol_param:
             with self._client() as client:
-                params: Optional[ProtocolParamsDto] = get_latest_protocol_params.sync(
-                    client=client
-                )
+                params: Optional[ProtocolParamsDto] = get_latest_protocol_params.sync(client=client)
             if not params:
                 raise ValueError("Failed to get protocol parameters.")
             self._protocol_param = ProtocolParameters.from_json(params.to_dict())
@@ -310,16 +308,12 @@ class YaciDevkitChainContext(ChainContext):
 
     def _genesis_file(self, era: str) -> Dict[str, Any]:
         if era not in self._genesis_files:
-            self._genesis_files[era] = self._admin_json(
-                f"/local-cluster/api/admin/devnet/genesis/{era}"
-            )
+            self._genesis_files[era] = self._admin_json(f"/local-cluster/api/admin/devnet/genesis/{era}")
         return self._genesis_files[era]
 
     def _genesis_cost_models(self) -> Dict[str, Dict[str, int]]:
         """Every language's cost model in ledger order, as pycardano serializes them."""
-        models: Dict[str, Any] = dict(
-            self._genesis_file("alonzo").get("costModels", {})
-        )
+        models: Dict[str, Any] = dict(self._genesis_file("alonzo").get("costModels", {}))
         v3 = self._genesis_file("conway").get("plutusV3CostModel")
         if v3:
             models["PlutusV3"] = v3
@@ -354,13 +348,9 @@ class YaciDevkitChainContext(ChainContext):
             raise ValueError("Yaci DevKit reported a latest block without a slot.")
         return slot
 
-    def _get_script(
-        self, script_hash: str
-    ) -> Union[PlutusV1Script, PlutusV2Script, PlutusV3Script, NativeScript]:
+    def _get_script(self, script_hash: str) -> Union[PlutusV1Script, PlutusV2Script, PlutusV3Script, NativeScript]:
         with self._client() as client:
-            script: Optional[ScriptDto] = get_script_by_hash.sync(
-                script_hash=script_hash, client=client
-            )
+            script: Optional[ScriptDto] = get_script_by_hash.sync(script_hash=script_hash, client=client)
 
         script_type = script.type if script else None
 
@@ -402,9 +392,7 @@ class YaciDevkitChainContext(ChainContext):
 
         def fetch(page: int, count: int) -> Optional[List[Any]]:
             with self._client() as client:
-                return get_utxos_1.sync(
-                    address=address, client=client, page=page, count=count
-                )
+                return get_utxos_1.sync(address=address, client=client, page=page, count=count)
 
         # Every page: the endpoint returns ten rows unless asked for more, and a wallet
         # with an eleventh UTxO would otherwise lose it without any error.
@@ -415,9 +403,7 @@ class YaciDevkitChainContext(ChainContext):
             return utxos
 
         for result in results or []:
-            tx_in = TransactionInput.from_primitive(
-                [result.tx_hash, result.output_index]
-            )
+            tx_in = TransactionInput.from_primitive([result.tx_hash, result.output_index])
             amount = result.amount
             lovelace_amount = 0
             multi_assets = MultiAsset()
@@ -449,21 +435,9 @@ class YaciDevkitChainContext(ChainContext):
             data_hash = _opt(result.data_hash)
             reference_script_hash = _opt(result.reference_script_hash)
 
-            datum_hash = (
-                DatumHash.from_primitive(data_hash)
-                if data_hash and inline_datum is None
-                else None
-            )
-            datum = (
-                RawCBOR(bytes.fromhex(str(inline_datum)))
-                if inline_datum is not None
-                else None
-            )
-            script = (
-                self._get_script(reference_script_hash)
-                if reference_script_hash
-                else None
-            )
+            datum_hash = DatumHash.from_primitive(data_hash) if data_hash and inline_datum is None else None
+            datum = RawCBOR(bytes.fromhex(str(inline_datum))) if inline_datum is not None else None
+            script = self._get_script(reference_script_hash) if reference_script_hash else None
 
             tx_out = TransactionOutput(
                 Address.from_primitive(address),
@@ -685,9 +659,7 @@ class YaciDevkitChainContext(ChainContext):
 
         def fetch(page: int, count: int) -> Optional[List[Any]]:
             with self._client() as client:
-                return get_utxos_1.sync(
-                    address=address, client=client, page=page, count=count
-                )
+                return get_utxos_1.sync(address=address, client=client, page=page, count=count)
 
         try:
             live = self._paginate(fetch)
@@ -695,10 +667,7 @@ class YaciDevkitChainContext(ChainContext):
             logger.error(f"Failed to get the UTxO set of {address}. Error: {e}")
             raise
 
-        return any(
-            _opt(utxo.tx_hash) == tx_hash and _opt(utxo.output_index) == index
-            for utxo in live
-        )
+        return any(_opt(utxo.tx_hash) == tx_hash and _opt(utxo.output_index) == index for utxo in live)
 
     def utxo(self, tx_input: TransactionInput) -> Optional[Tuple[UTxO, bool]]:
         """Resolve a single UTxO by the transaction input that identifies it.
@@ -722,9 +691,7 @@ class YaciDevkitChainContext(ChainContext):
 
         try:
             with self._client() as client:
-                result: Optional[AddressUtxo] = get_utxo_by_ref.sync(
-                    tx_hash=tx_hash, index=index, client=client
-                )
+                result: Optional[AddressUtxo] = get_utxo_by_ref.sync(tx_hash=tx_hash, index=index, client=client)
         except UnexpectedStatus as e:
             logger.error(f"Failed to get UTxO {tx_hash}#{index}. Error: {e}")
             return None
@@ -759,17 +726,9 @@ class YaciDevkitChainContext(ChainContext):
         tx_out = TransactionOutput(
             Address.from_primitive(address),
             amount=Value(lovelace, multi_assets),
-            datum_hash=(
-                DatumHash.from_primitive(data_hash)
-                if data_hash and inline_datum is None
-                else None
-            ),
+            datum_hash=(DatumHash.from_primitive(data_hash) if data_hash and inline_datum is None else None),
             datum=RawCBOR(bytes.fromhex(inline_datum)) if inline_datum else None,
-            script=(
-                self._get_script(reference_script_hash)
-                if reference_script_hash
-                else None
-            ),
+            script=(self._get_script(reference_script_hash) if reference_script_hash else None),
         )
 
         return UTxO(tx_input, tx_out), not self._is_unspent(address, tx_hash, index)
@@ -781,9 +740,7 @@ class YaciDevkitChainContext(ChainContext):
 
         def fetch(page: int, count: int) -> Optional[List[PoolRegistration]]:
             with self._client() as client:
-                return get_pool_registrations.sync(
-                    client=client, page=page, count=count
-                )
+                return get_pool_registrations.sync(client=client, page=page, count=count)
 
         try:
             rows = self._paginate(fetch)
@@ -791,9 +748,7 @@ class YaciDevkitChainContext(ChainContext):
             logger.error(f"Failed to get pool registrations. Error: {e}")
             raise
 
-        return sorted(
-            rows, key=lambda r: ((_opt(r.slot) or 0), _opt(r.cert_index) or 0)
-        )
+        return sorted(rows, key=lambda r: ((_opt(r.slot) or 0), _opt(r.cert_index) or 0))
 
     def _pool_retirements(self) -> List[PoolRetirement]:
         """Every pool retirement certificate Yaci has indexed, oldest first."""
@@ -808,9 +763,7 @@ class YaciDevkitChainContext(ChainContext):
             logger.error(f"Failed to get pool retirements. Error: {e}")
             raise
 
-        return sorted(
-            rows, key=lambda r: ((_opt(r.slot) or 0), _opt(r.cert_index) or 0)
-        )
+        return sorted(rows, key=lambda r: ((_opt(r.slot) or 0), _opt(r.cert_index) or 0))
 
     @staticmethod
     def _pool_id_hex(pool_id: str) -> str:
@@ -851,17 +804,13 @@ class YaciDevkitChainContext(ChainContext):
         state: Dict[str, Tuple[PoolRegistration, Optional[PoolRetirement]]] = {}
         for pool_id, registration in registrations.items():
             outstanding: Optional[PoolRetirement] = retirements.get(pool_id)
-            if outstanding is not None and (_opt(outstanding.slot) or 0) < (
-                _opt(registration.slot) or 0
-            ):
+            if outstanding is not None and (_opt(outstanding.slot) or 0) < (_opt(registration.slot) or 0):
                 # Re-registering after announcing a retirement cancels it.
                 outstanding = None
             state[pool_id] = (registration, outstanding)
         return state
 
-    def _pool_status(
-        self, retirement: Optional[PoolRetirement], epoch: int
-    ) -> PoolStatus:
+    def _pool_status(self, retirement: Optional[PoolRetirement], epoch: int) -> PoolStatus:
         """Derive a pool's status from its outstanding retirement, if any.
 
         A retirement takes effect at the start of its ``retirement_epoch``, so
@@ -946,17 +895,12 @@ class YaciDevkitChainContext(ChainContext):
 
         return PoolParams(
             operator=PoolKeyHash(bytes.fromhex(_opt(registration.pool_id) or "")),
-            vrf_keyhash=VrfKeyHash(
-                bytes.fromhex(_opt(registration.vrf_key_hash) or "")
-            ),
+            vrf_keyhash=VrfKeyHash(bytes.fromhex(_opt(registration.vrf_key_hash) or "")),
             pledge=_opt(registration.pledge) or 0,
             cost=_opt(registration.cost) or 0,
             margin=Fraction(str(_opt(registration.margin) or 0)).limit_denominator(),
             reward_account=self._reward_account(registration),
-            pool_owners=[
-                self._pool_owner(owner)
-                for owner in _opt(registration.pool_owners) or []
-            ],
+            pool_owners=[self._pool_owner(owner) for owner in _opt(registration.pool_owners) or []],
             relays=[self._relay(relay) for relay in _opt(registration.relays) or []],
             pool_metadata=pool_metadata,
         )
@@ -994,9 +938,7 @@ class YaciDevkitChainContext(ChainContext):
         return StakePoolInfo(
             pool_params=self._pool_params(registration),
             status=self._pool_status(retirement, self.epoch),
-            retiring_epoch=(
-                None if retirement is None else _opt(retirement.retirement_epoch)
-            ),
+            retiring_epoch=(None if retirement is None else _opt(retirement.retirement_epoch)),
         )
 
     # -- Governance --------------------------------------------------------
@@ -1010,9 +952,7 @@ class YaciDevkitChainContext(ChainContext):
 
         def registrations(page: int, count: int) -> Optional[List[DRepRegistration]]:
             with self._client() as client:
-                return get_d_rep_registrations.sync(
-                    client=client, page=page, count=count
-                )
+                return get_d_rep_registrations.sync(client=client, page=page, count=count)
 
         def updates(page: int, count: int) -> Optional[List[DRepRegistration]]:
             with self._client() as client:
@@ -1020,23 +960,15 @@ class YaciDevkitChainContext(ChainContext):
 
         def deregistrations(page: int, count: int) -> Optional[List[DRepRegistration]]:
             with self._client() as client:
-                return get_d_rep_de_registrations.sync(
-                    client=client, page=page, count=count
-                )
+                return get_d_rep_de_registrations.sync(client=client, page=page, count=count)
 
         try:
-            rows = (
-                self._paginate(registrations)
-                + self._paginate(updates)
-                + self._paginate(deregistrations)
-            )
+            rows = self._paginate(registrations) + self._paginate(updates) + self._paginate(deregistrations)
         except UnexpectedStatus as e:
             logger.error(f"Failed to get DRep certificates. Error: {e}")
             raise
 
-        return sorted(
-            rows, key=lambda r: ((_opt(r.slot) or 0), _opt(r.cert_index) or 0)
-        )
+        return sorted(rows, key=lambda r: ((_opt(r.slot) or 0), _opt(r.cert_index) or 0))
 
     def drep_info(self, drep: DRep) -> DRepInfo:
         """Get a delegate representative's registration.
@@ -1076,9 +1008,7 @@ class YaciDevkitChainContext(ChainContext):
 
         drep_hash = credential.payload.hex()
         certificates = [
-            certificate
-            for certificate in self._drep_certificates()
-            if _opt(certificate.drep_hash) == drep_hash
+            certificate for certificate in self._drep_certificates() if _opt(certificate.drep_hash) == drep_hash
         ]
 
         if not certificates:
@@ -1107,9 +1037,7 @@ class YaciDevkitChainContext(ChainContext):
         """The number of epochs a governance action stays open for voting."""
         try:
             with self._client() as client:
-                params: Optional[ProtocolParamsDto] = get_latest_protocol_params.sync(
-                    client=client
-                )
+                params: Optional[ProtocolParamsDto] = get_latest_protocol_params.sync(client=client)
         except UnexpectedStatus as e:
             logger.error(f"Failed to get protocol parameters. Error: {e}")
             raise
@@ -1121,9 +1049,7 @@ class YaciDevkitChainContext(ChainContext):
 
         def fetch(page: int, count: int) -> Optional[List[GovActionProposal]]:
             with self._client() as client:
-                return get_gov_action_proposal_list.sync(
-                    client=client, page=page, count=count
-                )
+                return get_gov_action_proposal_list.sync(client=client, page=page, count=count)
 
         try:
             return self._paginate(fetch)
@@ -1146,9 +1072,7 @@ class YaciDevkitChainContext(ChainContext):
         tx_hash = str(gov_action_id.transaction_id)
         try:
             with self._client() as client:
-                proposals = get_gov_action_proposal_by_tx.sync(
-                    tx_hash=tx_hash, client=client
-                )
+                proposals = get_gov_action_proposal_by_tx.sync(tx_hash=tx_hash, client=client)
         except UnexpectedStatus as e:
             logger.error(f"Failed to get governance proposals of {tx_hash}. Error: {e}")
             raise
@@ -1184,9 +1108,7 @@ class YaciDevkitChainContext(ChainContext):
         details = _opt(proposal.details)
         return details.to_dict() if details is not None else None
 
-    def _votes_for(
-        self, tx_hash: str, index: int
-    ) -> Tuple[List[CommitteeVote], List[DRepVote], List[StakePoolVote]]:
+    def _votes_for(self, tx_hash: str, index: int) -> Tuple[List[CommitteeVote], List[DRepVote], List[StakePoolVote]]:
         """Fetch a proposal's voting procedures and split them by voter role.
 
         A voter may vote more than once on the same action and only its last
@@ -1219,9 +1141,7 @@ class YaciDevkitChainContext(ChainContext):
             raise
 
         latest: Dict[Tuple[Any, Optional[str]], VotingProcedure] = {}
-        for row in sorted(
-            rows, key=lambda v: ((_opt(v.slot) or 0), _opt(v.index) or 0)
-        ):
+        for row in sorted(rows, key=lambda v: ((_opt(v.slot) or 0), _opt(v.index) or 0)):
             latest[(_opt(row.voter_type), _opt(row.voter_hash))] = row
 
         committee: List[CommitteeVote] = []
@@ -1239,10 +1159,7 @@ class YaciDevkitChainContext(ChainContext):
             anchor = _anchor(_opt(row.anchor_url), _opt(row.anchor_hash))
             payload = bytes.fromhex(voter_hash)
 
-            if (
-                voter_type
-                is VotingProcedureVoterType.CONSTITUTIONAL_COMMITTEE_HOT_KEY_HASH
-            ):
+            if voter_type is VotingProcedureVoterType.CONSTITUTIONAL_COMMITTEE_HOT_KEY_HASH:
                 committee.append(
                     CommitteeVote(
                         voter=CommitteeHotCredential(VerificationKeyHash(payload)),
@@ -1250,10 +1167,7 @@ class YaciDevkitChainContext(ChainContext):
                         anchor=anchor,
                     )
                 )
-            elif (
-                voter_type
-                is VotingProcedureVoterType.CONSTITUTIONAL_COMMITTEE_HOT_SCRIPT_HASH
-            ):
+            elif voter_type is VotingProcedureVoterType.CONSTITUTIONAL_COMMITTEE_HOT_SCRIPT_HASH:
                 committee.append(
                     CommitteeVote(
                         voter=CommitteeHotCredential(ScriptHash(payload)),
@@ -1323,16 +1237,10 @@ class YaciDevkitChainContext(ChainContext):
             gov_action_id=gov_action_id,
             gov_action=self._proposal_action(proposal),
             proposed_in=proposed_in,
-            expires_after=(
-                None
-                if proposed_in is None or lifetime is None
-                else proposed_in + lifetime
-            ),
+            expires_after=(None if proposed_in is None or lifetime is None else proposed_in + lifetime),
         )
 
-    def _gov_action_votes(
-        self, proposal: GovActionProposal, lifetime: Optional[int]
-    ) -> GovActionVotes:
+    def _gov_action_votes(self, proposal: GovActionProposal, lifetime: Optional[int]) -> GovActionVotes:
         """Assemble a GovActionVotes from a proposal plus its voting procedures."""
         tx_hash = _opt(proposal.tx_hash) or ""
         index = _opt(proposal.index) or 0
@@ -1349,11 +1257,7 @@ class YaciDevkitChainContext(ChainContext):
             deposit_return_addr=_opt(proposal.return_address),
             anchor=_anchor(_opt(proposal.anchor_url), _opt(proposal.anchor_hash)),
             proposed_in=proposed_in,
-            expires_after=(
-                None
-                if proposed_in is None or lifetime is None
-                else proposed_in + lifetime
-            ),
+            expires_after=(None if proposed_in is None or lifetime is None else proposed_in + lifetime),
         )
 
     def gov_action_votes(self, gov_action_id: GovActionId) -> GovActionVotes:
@@ -1375,9 +1279,7 @@ class YaciDevkitChainContext(ChainContext):
             ValueError: If no proposal matches the identifier.
             :class:`UnexpectedStatus`: When the query fails.
         """
-        return self._gov_action_votes(
-            self._find_proposal(gov_action_id), self._gov_action_lifetime()
-        )
+        return self._gov_action_votes(self._find_proposal(gov_action_id), self._gov_action_lifetime())
 
     def gov_actions_all(self) -> List[GovActionVotes]:
         """Get every governance proposal with its votes.
@@ -1402,6 +1304,4 @@ class YaciDevkitChainContext(ChainContext):
             :class:`UnexpectedStatus`: When the query fails.
         """
         lifetime = self._gov_action_lifetime()
-        return [
-            self._gov_action_votes(proposal, lifetime) for proposal in self._proposals()
-        ]
+        return [self._gov_action_votes(proposal, lifetime) for proposal in self._proposals()]

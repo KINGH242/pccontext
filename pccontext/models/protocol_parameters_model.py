@@ -42,21 +42,9 @@ class CostModels(BaseModel):
         :return: The serialized cost models
         """
         return {
-            "PlutusV1": (
-                list(self.plutus_v1.values())
-                if isinstance(self.plutus_v1, dict)
-                else self.plutus_v1
-            ),
-            "PlutusV2": (
-                list(self.plutus_v2.values())
-                if isinstance(self.plutus_v2, dict)
-                else self.plutus_v2
-            ),
-            "PlutusV3": (
-                list(self.plutus_v3.values())
-                if isinstance(self.plutus_v3, dict)
-                else self.plutus_v3
-            ),
+            "PlutusV1": (list(self.plutus_v1.values()) if isinstance(self.plutus_v1, dict) else self.plutus_v1),
+            "PlutusV2": (list(self.plutus_v2.values()) if isinstance(self.plutus_v2, dict) else self.plutus_v2),
+            "PlutusV3": (list(self.plutus_v3.values()) if isinstance(self.plutus_v3, dict) else self.plutus_v3),
         }
 
 
@@ -98,9 +86,7 @@ def cost_model_to_pycardano(
     """
     if cost_model is None:
         return None
-    costs = (
-        list(cost_model.values()) if isinstance(cost_model, dict) else list(cost_model)
-    )
+    costs = list(cost_model.values()) if isinstance(cost_model, dict) else list(cost_model)
     width = len(str(len(costs) - 1)) if costs else 1
     return {str(position).zfill(width): cost for position, cost in enumerate(costs)}
 
@@ -120,16 +106,12 @@ class DRepVotingThresholds(BaseModel):
     )
     motion_no_confidence: Optional[float] = field(
         default=None,
-        metadata={
-            "aliases": ["motion_no_confidence", "motionNoConfidence", "noConfidence"]
-        },
+        metadata={"aliases": ["motion_no_confidence", "motionNoConfidence", "noConfidence"]},
     )
     pp_economic_group: Optional[float] = field(
         default=None, metadata={"aliases": ["pp_economic_group", "ppEconomicGroup"]}
     )
-    pp_gov_group: Optional[float] = field(
-        default=None, metadata={"aliases": ["pp_gov_group", "ppGovGroup"]}
-    )
+    pp_gov_group: Optional[float] = field(default=None, metadata={"aliases": ["pp_gov_group", "ppGovGroup"]})
     pp_network_group: Optional[float] = field(
         default=None, metadata={"aliases": ["pp_network_group", "ppNetworkGroup"]}
     )
@@ -181,9 +163,7 @@ class DRepVotingThresholds(BaseModel):
         """
         if key == "constitutionalCommittee":
             init_args["committee_normal"] = float(Fraction(value["default"]))
-            init_args["committee_no_confidence"] = float(
-                Fraction(value["stateOfNoConfidence"])
-            )
+            init_args["committee_no_confidence"] = float(Fraction(value["stateOfNoConfidence"]))
         elif key == "protocolParametersUpdate":
             init_args["pp_economic_group"] = float(Fraction(value["economic"]))
             init_args["pp_gov_group"] = float(Fraction(value["governance"]))
@@ -193,22 +173,14 @@ class DRepVotingThresholds(BaseModel):
 
 @dataclass(frozen=True)
 class ExecutionUnitPrices(BaseModel):
-    price_memory: Optional[float] = field(
-        default=None, metadata={"aliases": ["price_memory", "priceMemory", "memory"]}
-    )
-    price_steps: Optional[float] = field(
-        default=None, metadata={"aliases": ["price_steps", "priceSteps", "cpu"]}
-    )
+    price_memory: Optional[float] = field(default=None, metadata={"aliases": ["price_memory", "priceMemory", "memory"]})
+    price_steps: Optional[float] = field(default=None, metadata={"aliases": ["price_steps", "priceSteps", "cpu"]})
 
 
 @dataclass(frozen=True)
 class MaxExecutionUnits(BaseModel):
-    memory: Optional[int] = field(
-        default=None, metadata={"aliases": ["memory", "exUnitsMem"]}
-    )
-    steps: Optional[int] = field(
-        default=None, metadata={"aliases": ["steps", "exUnitsSteps", "cpu"]}
-    )
+    memory: Optional[int] = field(default=None, metadata={"aliases": ["memory", "exUnitsMem"]})
+    steps: Optional[int] = field(default=None, metadata={"aliases": ["steps", "exUnitsSteps", "cpu"]})
 
 
 @dataclass(frozen=True)
@@ -226,9 +198,7 @@ class PoolVotingThresholds(BaseModel):
     )
     motion_no_confidence: Optional[float] = field(
         default=None,
-        metadata={
-            "aliases": ["motion_no_confidence", "motionNoConfidence", "noConfidence"]
-        },
+        metadata={"aliases": ["motion_no_confidence", "motionNoConfidence", "noConfidence"]},
     )
     pp_security_group: Optional[float] = field(
         default=None, metadata={"aliases": ["pp_security_group", "ppSecurityGroup"]}
@@ -258,9 +228,7 @@ class PoolVotingThresholds(BaseModel):
         """
         if key == "constitutionalCommittee":
             init_args["committee_normal"] = float(Fraction(value["default"]))
-            init_args["committee_no_confidence"] = float(
-                Fraction(value["stateOfNoConfidence"])
-            )
+            init_args["committee_no_confidence"] = float(Fraction(value["stateOfNoConfidence"]))
 
 
 @dataclass(frozen=True)
@@ -295,9 +263,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
             ]
         },
     )
-    cost_models: Optional[
-        Union[CostModels, Dict[str, Union[Dict[Union[str, int], int], list]]]
-    ] = field(
+    cost_models: Optional[Union[CostModels, Dict[str, Union[Dict[Union[str, int], int], list]]]] = field(
         default=None,
         metadata={
             "aliases": [
@@ -350,9 +316,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
     )
     dvt_committee_no_confidence: Optional[float] = field(
         default=None,
-        metadata={
-            "aliases": ["dvt_committee_no_confidence", "dvtCommitteeNoConfidence"]
-        },
+        metadata={"aliases": ["dvt_committee_no_confidence", "dvtCommitteeNoConfidence"]},
     )
     dvt_update_to_constitution: Optional[float] = field(
         default=None,
@@ -430,9 +394,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
             ]
         },
     )
-    max_block_size: Optional[int] = field(
-        default=None, metadata={"aliases": ["max_block_size", "maxBlockBodySize"]}
-    )
+    max_block_size: Optional[int] = field(default=None, metadata={"aliases": ["max_block_size", "maxBlockBodySize"]})
     max_block_execution_units: Optional[MaxExecutionUnits] = field(
         default=None,
         metadata={
@@ -453,9 +415,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
     )
     max_block_header_size: Optional[int] = field(
         default=None,
-        metadata={
-            "aliases": ["max_block_header_size", "maxBlockHeaderSize", "max_bh_size"]
-        },
+        metadata={"aliases": ["max_block_header_size", "maxBlockHeaderSize", "max_bh_size"]},
     )
     max_collateral_inputs: Optional[int] = field(
         default=None,
@@ -494,9 +454,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
         default=None,
         metadata={"aliases": ["max_tx_size", "maxTxSize", "maxTransactionSize"]},
     )
-    max_val_size: Optional[int] = field(
-        default=None, metadata={"aliases": ["max_val_size", "maxValueSize"]}
-    )
+    max_val_size: Optional[int] = field(default=None, metadata={"aliases": ["max_val_size", "maxValueSize"]})
     min_fee_coefficient: Optional[int] = field(
         default=None,
         metadata={
@@ -624,9 +582,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
     )
     pvt_committee_no_confidence: Optional[float] = field(
         default=None,
-        metadata={
-            "aliases": ["pvt_committee_no_confidence", "pvtCommitteeNoConfidence"]
-        },
+        metadata={"aliases": ["pvt_committee_no_confidence", "pvtCommitteeNoConfidence"]},
     )
     pvt_hard_fork_initiation: Optional[float] = field(
         default=None,
@@ -671,13 +627,9 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
     )
     key_deposit: Optional[int] = field(
         default=None,
-        metadata={
-            "aliases": ["key_deposit", "stakeAddressDeposit", "stakeCredentialDeposit"]
-        },
+        metadata={"aliases": ["key_deposit", "stakeAddressDeposit", "stakeCredentialDeposit"]},
     )
-    pool_deposit: Optional[int] = field(
-        default=None, metadata={"aliases": ["pool_deposit", "stakePoolDeposit"]}
-    )
+    pool_deposit: Optional[int] = field(default=None, metadata={"aliases": ["pool_deposit", "stakePoolDeposit"]})
     pool_target_num: Optional[int] = field(
         default=500,
         metadata={
@@ -706,9 +658,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
         default=None,
         metadata={"aliases": ["tx_fee_fixed", "txFeeFixed"]},
     )
-    tx_fee_per_byte: Optional[int] = field(
-        default=None, metadata={"aliases": ["tx_fee_per_byte", "txFeePerByte"]}
-    )
+    tx_fee_per_byte: Optional[int] = field(default=None, metadata={"aliases": ["tx_fee_per_byte", "txFeePerByte"]})
     decentralization_param: Optional[float] = field(
         default=None,
         metadata={
@@ -720,9 +670,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
             ]
         },
     )
-    extra_entropy: Optional[str] = field(
-        default=None, metadata={"aliases": ["extra_entropy", "extraPraosEntropy"]}
-    )
+    extra_entropy: Optional[str] = field(default=None, metadata={"aliases": ["extra_entropy", "extraPraosEntropy"]})
     price_mem: Optional[float] = field(
         default=None,
         metadata={"aliases": ["price_mem", "executionUnitPricesPriceMemory"]},
@@ -748,80 +696,50 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
     utxo_cost_per_byte: Optional[int] = field(
         default=None, metadata={"aliases": ["utxo_cost_per_byte", "utxoCostPerByte"]}
     )
-    epoch: Optional[int] = field(
-        default=None, metadata={"aliases": ["epoch", "epoch_no", "epochNo"]}
-    )
+    epoch: Optional[int] = field(default=None, metadata={"aliases": ["epoch", "epoch_no", "epochNo"]})
     nonce: Optional[str] = field(default=None, metadata={"aliases": ["nonce"]})
-    block_hash: Optional[str] = field(
-        default=None, metadata={"aliases": ["block_hash"]}
-    )
+    block_hash: Optional[str] = field(default=None, metadata={"aliases": ["block_hash"]})
 
     def __post_init__(self):
         if self.protocol_version is None:
             object.__setattr__(
                 self,
                 "protocol_version",
-                ProtocolVersion(
-                    major=self.protocol_major_version, minor=self.protocol_minor_version
-                ),
+                ProtocolVersion(major=self.protocol_major_version, minor=self.protocol_minor_version),
             )
-        elif (
-            self.protocol_major_version is None and self.protocol_minor_version is None
-        ):
-            object.__setattr__(
-                self, "protocol_major_version", self.protocol_version.major
-            )
-            object.__setattr__(
-                self, "protocol_minor_version", self.protocol_version.minor
-            )
+        elif self.protocol_major_version is None and self.protocol_minor_version is None:
+            object.__setattr__(self, "protocol_major_version", self.protocol_version.major)
+            object.__setattr__(self, "protocol_minor_version", self.protocol_version.minor)
 
         if not self.execution_unit_prices:
             object.__setattr__(
                 self,
                 "execution_unit_prices",
-                ExecutionUnitPrices(
-                    price_memory=self.price_mem, price_steps=self.price_step
-                ),
+                ExecutionUnitPrices(price_memory=self.price_mem, price_steps=self.price_step),
             )
         elif self.price_mem is None and self.price_step is None:
-            object.__setattr__(
-                self, "price_mem", self.execution_unit_prices.price_memory
-            )
-            object.__setattr__(
-                self, "price_step", self.execution_unit_prices.price_steps
-            )
+            object.__setattr__(self, "price_mem", self.execution_unit_prices.price_memory)
+            object.__setattr__(self, "price_step", self.execution_unit_prices.price_steps)
 
         if not self.max_tx_execution_units:
             object.__setattr__(
                 self,
                 "max_tx_execution_units",
-                MaxExecutionUnits(
-                    memory=self.max_tx_ex_mem, steps=self.max_tx_ex_steps
-                ),
+                MaxExecutionUnits(memory=self.max_tx_ex_mem, steps=self.max_tx_ex_steps),
             )
         elif self.max_tx_ex_mem is None and self.max_tx_ex_steps is None:
-            object.__setattr__(
-                self, "max_tx_ex_mem", self.max_tx_execution_units.memory
-            )
-            object.__setattr__(
-                self, "max_tx_ex_steps", self.max_tx_execution_units.steps
-            )
+            object.__setattr__(self, "max_tx_ex_mem", self.max_tx_execution_units.memory)
+            object.__setattr__(self, "max_tx_ex_steps", self.max_tx_execution_units.steps)
 
         if not self.max_block_execution_units:
             object.__setattr__(
                 self,
                 "max_block_execution_units",
-                MaxExecutionUnits(
-                    memory=self.max_block_ex_mem, steps=self.max_block_ex_steps
-                ),
+                MaxExecutionUnits(memory=self.max_block_ex_mem, steps=self.max_block_ex_steps),
             )
         elif self.max_block_ex_mem is None and self.max_block_ex_steps is None:
-            object.__setattr__(
-                self, "max_block_ex_mem", self.max_block_execution_units.memory
-            )
-            object.__setattr__(
-                self, "max_block_ex_steps", self.max_block_execution_units.steps
-            )
+            object.__setattr__(self, "max_block_ex_mem", self.max_block_execution_units.memory)
+            object.__setattr__(self, "max_block_ex_steps", self.max_block_execution_units.steps)
 
         if self.coins_per_utxo_byte is None:
             object.__setattr__(
@@ -1039,72 +957,36 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
             "costModels": cost_models,
             "dRepActivity": self.d_rep_activity,
             "dRepDeposit": self.d_rep_deposit,
-            "dRepVotingThresholds": (
-                self.d_rep_voting_thresholds.to_dict()
-                if self.d_rep_voting_thresholds
-                else None
-            ),
-            "executionUnitPrices": (
-                self.execution_unit_prices.to_dict()
-                if self.execution_unit_prices
-                else None
-            ),
+            "dRepVotingThresholds": (self.d_rep_voting_thresholds.to_dict() if self.d_rep_voting_thresholds else None),
+            "executionUnitPrices": (self.execution_unit_prices.to_dict() if self.execution_unit_prices else None),
             "extraPraosEntropy": self.extra_entropy or None,
             "govActionDeposit": self.gov_action_deposit,
             "govActionLifetime": self.gov_action_lifetime,
             "maxBlockBodySize": self.max_block_size,
             "maxBlockExecutionUnits": {
-                "memory": (
-                    self.max_block_execution_units.memory
-                    if self.max_block_execution_units
-                    else None
-                ),
-                "steps": (
-                    self.max_block_execution_units.steps
-                    if self.max_block_execution_units
-                    else None
-                ),
+                "memory": (self.max_block_execution_units.memory if self.max_block_execution_units else None),
+                "steps": (self.max_block_execution_units.steps if self.max_block_execution_units else None),
             },
             "maxBlockHeaderSize": self.max_block_header_size,
             "maxCollateralInputs": self.max_collateral_inputs,
             "maxTxExecutionUnits": {
-                "memory": (
-                    self.max_tx_execution_units.memory
-                    if self.max_tx_execution_units
-                    else None
-                ),
-                "steps": (
-                    self.max_tx_execution_units.steps
-                    if self.max_tx_execution_units
-                    else None
-                ),
+                "memory": (self.max_tx_execution_units.memory if self.max_tx_execution_units else None),
+                "steps": (self.max_tx_execution_units.steps if self.max_tx_execution_units else None),
             },
             "maxTxSize": self.max_tx_size,
             "maxValueSize": self.max_val_size,
             "minFeeRefScriptCostPerByte": self.min_fee_ref_script_cost_per_byte,
             "minPoolCost": self.min_pool_cost,
             "minUTxOValue": self.min_utxo_value or None,
-            "monetaryExpansion": (
-                float(self.monetary_expansion) if self.monetary_expansion else None
-            ),
-            "poolPledgeInfluence": (
-                float(self.pool_influence) if self.pool_influence else None
-            ),
+            "monetaryExpansion": (float(self.monetary_expansion) if self.monetary_expansion else None),
+            "poolPledgeInfluence": (float(self.pool_influence) if self.pool_influence else None),
             "poolRetireMaxEpoch": self.pool_retire_max_epoch,
-            "poolVotingThresholds": (
-                self.pool_voting_thresholds.to_dict()
-                if self.pool_voting_thresholds
-                else None
-            ),
-            "protocolVersion": (
-                self.protocol_version.to_dict() if self.protocol_version else None
-            ),
+            "poolVotingThresholds": (self.pool_voting_thresholds.to_dict() if self.pool_voting_thresholds else None),
+            "protocolVersion": (self.protocol_version.to_dict() if self.protocol_version else None),
             "stakeAddressDeposit": self.key_deposit,
             "stakePoolDeposit": self.pool_deposit,
             "stakePoolTargetNum": self.pool_target_num,
-            "treasuryCut": (
-                float(self.treasury_expansion) if self.treasury_expansion else None
-            ),
+            "treasuryCut": (float(self.treasury_expansion) if self.treasury_expansion else None),
             "txFeeFixed": self.tx_fee_fixed,
             "txFeePerByte": self.tx_fee_per_byte,
             "utxoCostPerByte": self.utxo_cost_per_byte,
@@ -1150,9 +1032,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
         if isinstance(max_size, dict):
             maximum_reference_scripts_size = max_size
         elif min_fee_reference_scripts is not None:
-            maximum_reference_scripts_size = {
-                "bytes": max_size or MAX_REF_SCRIPTS_BYTES
-            }
+            maximum_reference_scripts_size = {"bytes": max_size or MAX_REF_SCRIPTS_BYTES}
 
         return PyCardanoProtocolParameters(
             min_fee_constant=self.min_fee_constant,
@@ -1162,20 +1042,10 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
             max_block_header_size=self.max_block_header_size,
             key_deposit=self.key_deposit,
             pool_deposit=self.pool_deposit,
-            pool_influence=(
-                Fraction(self.pool_influence) if self.pool_influence else None
-            ),
-            monetary_expansion=(
-                Fraction(self.monetary_expansion) if self.monetary_expansion else None
-            ),
-            treasury_expansion=(
-                Fraction(self.treasury_expansion) if self.treasury_expansion else None
-            ),
-            decentralization_param=(
-                Fraction(self.decentralization_param)
-                if self.decentralization_param
-                else None
-            ),
+            pool_influence=(Fraction(self.pool_influence) if self.pool_influence else None),
+            monetary_expansion=(Fraction(self.monetary_expansion) if self.monetary_expansion else None),
+            treasury_expansion=(Fraction(self.treasury_expansion) if self.treasury_expansion else None),
+            decentralization_param=(Fraction(self.decentralization_param) if self.decentralization_param else None),
             extra_entropy=self.extra_entropy,
             protocol_major_version=self.protocol_major_version,
             protocol_minor_version=self.protocol_minor_version,

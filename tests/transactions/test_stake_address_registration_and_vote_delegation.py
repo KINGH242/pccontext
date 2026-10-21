@@ -29,9 +29,7 @@ from pccontext.transactions.stake_address_registration_and_vote_delegation impor
         ),
     ],
 )
-def test_stake_address_registration_and_vote_delegation_success(
-    chain_context, drep_kind, drep_id
-):
+def test_stake_address_registration_and_vote_delegation_success(chain_context, drep_kind, drep_id):
     """
     Test successful stake address registration and vote delegation.
     """
@@ -40,9 +38,7 @@ def test_stake_address_registration_and_vote_delegation_success(
     address = Address.from_primitive(
         "addr1x8nz307k3sr60gu0e47cmajssy4fmld7u493a4xztjrll0aj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrswgxsta"
     )
-    transaction = stake_address_registration_and_vote_delegation(
-        chain_context, vk, address, drep_kind, drep_id
-    )
+    transaction = stake_address_registration_and_vote_delegation(chain_context, vk, address, drep_kind, drep_id)
     assert transaction.valid is True
     assert transaction.transaction_body is not None
     assert transaction.transaction_body.hash() is not None

@@ -46,6 +46,7 @@ from pycardano.governance import (
 from pycardano.hash import (
     AnchorDataHash,
     DatumHash,
+    PolicyHash,
     PoolMetadataHash,
     RewardAccountHash,
     ScriptHash,
@@ -62,6 +63,7 @@ from pycardano.plutus import (
     PlutusV2Script,
     PlutusV3Script,
     RawPlutusData,
+    RedeemerMap,
     RedeemerTag,
 )
 from pycardano.pool_params import (
@@ -348,7 +350,7 @@ class CardanoCliChainContext(ChainContext):
     @staticmethod
     def _get_script(
         reference_script: dict,
-    ) -> Union[PlutusV1Script, PlutusV2Script, NativeScript]:
+    ) -> Union[PlutusV1Script, PlutusV2Script, PlutusV3Script, NativeScript]:
         """
         Get a script object from a reference script dictionary.
         Args:
@@ -524,7 +526,7 @@ class CardanoCliChainContext(ChainContext):
             return []
 
         pairs: List[Tuple[int, int]] = []
-        if hasattr(redeemers, "items"):  # Conway: a RedeemerKey -> RedeemerValue map
+        if isinstance(redeemers, RedeemerMap):  # Conway: a RedeemerKey -> RedeemerValue map
             for redeemer_key in redeemers.keys():
                 pairs.append((RedeemerTag(redeemer_key.tag).value, redeemer_key.index))
         else:  # Legacy: a plain list of Redeemer
@@ -2144,11 +2146,11 @@ class CardanoCliChainContext(ChainContext):
         def previous(index: int = 0) -> Optional[GovActionId]:
             return self._parse_gov_action_id(contents[index]) if len(contents) > index else None
 
-        def script_hash(index: int) -> Optional[ScriptHash]:
+        def script_hash(index: int) -> Optional[PolicyHash]:
             if len(contents) <= index or not isinstance(contents[index], str):
                 return None
             try:
-                return ScriptHash(bytes.fromhex(contents[index]))
+                return PolicyHash(bytes.fromhex(contents[index]))
             except (AssertionError, ValueError):
                 return None
 

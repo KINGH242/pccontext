@@ -145,7 +145,7 @@ class AddressInfo(BaseModel):
             transaction_id=TransactionId.from_primitive(utxo["input"]["transaction_id"]),
         )
 
-        tx_out_address = AddressInfo.from_address(utxo["output"]["address"])
+        tx_out_address = Address.from_primitive(utxo["output"]["address"])
 
         multi_asset = MultiAsset()
         multi_asset_input = utxo["output"]["amount"]["multi_asset"]
@@ -158,7 +158,7 @@ class AddressInfo(BaseModel):
                 multi_asset.setdefault(policy, Asset())[asset_name] = amount
 
         transaction_output = TransactionOutput(
-            address=tx_out_address.address,
+            address=tx_out_address,
             amount=Value(
                 coin=utxo["output"]["amount"]["coin"],
                 multi_asset=multi_asset,

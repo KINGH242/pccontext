@@ -394,16 +394,16 @@ class OgmiosChainContext(ChainContext):
             pool_deposit=params.stake_pool_deposit.ada.lovelace,
             pool_retire_max_epoch=params.stake_pool_retirement_epoch_bound,
             pool_target_num=params.desired_number_of_stake_pools,
-            pool_influence=Fraction(params.stake_pool_pledge_influence),  # type: ignore[arg-type]
-            monetary_expansion=Fraction(params.monetary_expansion),  # type: ignore[arg-type]
-            treasury_expansion=Fraction(params.treasury_expansion),  # type: ignore[arg-type]
+            pool_influence=Fraction(params.stake_pool_pledge_influence),
+            monetary_expansion=Fraction(params.monetary_expansion),
+            treasury_expansion=Fraction(params.treasury_expansion),
             decentralization_param=decentralization_param,
             extra_entropy=params.extra_entropy,
             protocol_major_version=params.version.major,
             protocol_minor_version=params.version.minor,
             min_utxo=None,  # type: ignore[arg-type]
-            price_mem=Fraction(prices.memory) if prices else None,  # type: ignore[arg-type]
-            price_step=Fraction(prices.cpu) if prices else None,  # type: ignore[arg-type]
+            price_mem=Fraction(prices.memory) if prices else None,
+            price_step=Fraction(prices.cpu) if prices else None,
             max_tx_ex_mem=tx_units.memory if tx_units else None,
             max_tx_ex_steps=tx_units.cpu if tx_units else None,
             max_val_size=params.max_value_size.bytes if params.max_value_size else None,
@@ -450,9 +450,7 @@ class OgmiosChainContext(ChainContext):
             epoch_length=genesis.epoch_length,
             system_start=genesis.start_time,
             slots_per_kes_period=genesis.slots_per_kes_period,
-            slot_length=(
-                int(slot_length) if slot_length.denominator == 1 else float(slot_length)  # type: ignore[arg-type]
-            ),
+            slot_length=(int(slot_length) if slot_length.denominator == 1 else float(slot_length)),
             max_kes_evolutions=genesis.max_kes_evolutions,
             security_param=genesis.security_parameter,
         )
@@ -518,7 +516,7 @@ class OgmiosChainContext(ChainContext):
 
         tx_out = TransactionOutput(
             Address.from_primitive(utxo.address),
-            amount=(Value(lovelace_amount, multi_assets) if multi_assets else lovelace_amount),
+            amount=Value(lovelace_amount, multi_assets),
             datum_hash=datum_hash,
             datum=datum,
             script=cls._script_from_ogmios(utxo.script) if utxo.script else None,
@@ -549,7 +547,9 @@ class OgmiosChainContext(ChainContext):
         return plutus_script(bytes.fromhex(script.cbor))
 
     @classmethod
-    def _native_script_from_ogmios(cls, clause: Any) -> NativeScript:
+    def _native_script_from_ogmios(
+        cls, clause: Any
+    ) -> Union[ScriptPubkey, ScriptAll, ScriptAny, ScriptNofK, InvalidBefore, InvalidHereAfter]:
         """Convert an Ogmios native script (its JSON clause tree) to PyCardano.
 
         Ogmios' ``after`` is the slot a script becomes valid from (pycardano's
@@ -1135,7 +1135,13 @@ class OgmiosChainContext(ChainContext):
     @classmethod
     def _pool_params_from_ogmios(cls, pool_id: str, params: ot.StakePoolView) -> PoolParams:
         """Convert an Ogmios stake pool entry to PyCardano pool parameters."""
-        if params.vrf_verification_key_hash is None or params.margin is None or params.reward_account is None:
+        if (
+            params.vrf_verification_key_hash is None
+            or params.margin is None
+            or params.reward_account is None
+            or params.pledge is None
+            or params.cost is None
+        ):
             raise OgmiosError(f"Incomplete parameters for stake pool: {pool_id}")
         metadata = params.metadata
         pool_metadata = (
@@ -1151,8 +1157,8 @@ class OgmiosChainContext(ChainContext):
         return PoolParams(
             operator=PoolOperator.from_primitive(pool_id).pool_key_hash,
             vrf_keyhash=VrfKeyHash(bytes.fromhex(params.vrf_verification_key_hash)),
-            pledge=cls._ada(params.pledge),
-            cost=cls._ada(params.cost),
+            pledge=params.pledge.ada.lovelace,
+            cost=params.cost.ada.lovelace,
             margin=Fraction(params.margin),
             reward_account=RewardAccountHash(bytes(reward_account.to_primitive())),
             pool_owners=[VerificationKeyHash(bytes.fromhex(owner)) for owner in params.owners or []],

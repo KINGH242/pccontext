@@ -338,7 +338,7 @@ class OfflineTransferFileContext(ChainContext):
             tx_json=tx_json,
         )
 
-        action = HistoryType.SAVE_TRANSACTION.value(tx.id)
+        action = HistoryType.SAVE_TRANSACTION.value(str(tx.id))
 
         self._offline_transfer.transactions.append(offline_transaction)
         self._offline_transfer.history.append(OfflineTransferHistory(action=action))

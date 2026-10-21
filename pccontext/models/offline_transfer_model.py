@@ -18,6 +18,7 @@ from pycardano import (
     PoolParams,
     Vote,
 )
+from pycardano.serialization import CBORSerializable
 
 from pccontext.enums import (
     CommitteeMemberStatus,
@@ -70,7 +71,7 @@ __all__ = [
 # stored in that form because a human reads the transfer file.
 # --------------------------------------------------------------------------
 
-C = TypeVar("C")
+C = TypeVar("C", bound=CBORSerializable)
 E = TypeVar("E", bound=Enum)
 
 
@@ -101,7 +102,7 @@ def _from_cbor_hex(cls: Type[C], value: Optional[Any]) -> Optional[C]:
     if value is None or isinstance(value, cls):
         return value
     with contextlib.suppress(Exception):
-        return cls.from_cbor(value)  # type: ignore[attr-defined]
+        return cls.from_cbor(value)
     return None
 
 

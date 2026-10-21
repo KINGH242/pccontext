@@ -46,6 +46,7 @@ from pycardano.governance import (
 from pycardano.hash import (
     AnchorDataHash,
     DatumHash,
+    PolicyHash,
     PoolMetadataHash,
     RewardAccountHash,
     ScriptHash,
@@ -62,6 +63,7 @@ from pycardano.plutus import (
     PlutusV2Script,
     PlutusV3Script,
     RawPlutusData,
+    RedeemerMap,
     RedeemerTag,
 )
 from pycardano.pool_params import (
@@ -208,25 +210,17 @@ class CardanoCliChainContext(ChainContext):
         self._config_file = config_file
         self._last_known_block_slot = 0
         self._refetch_chain_tip_interval = (
-            refetch_chain_tip_interval
-            if refetch_chain_tip_interval is not None
-            else 1000
+            refetch_chain_tip_interval if refetch_chain_tip_interval is not None else 1000
         )
         self._last_chain_tip_fetch = 0
         self._genesis_param = None
         self._protocol_param = None
         if refetch_chain_tip_interval is None:
             slot_length = self.genesis_param.slot_length or 1
-            active_slots_coefficient = (
-                self.genesis_param.active_slots_coefficient or 0.05
-            )
-            self._refetch_chain_tip_interval = float(
-                slot_length / active_slots_coefficient
-            )
+            active_slots_coefficient = self.genesis_param.active_slots_coefficient or 0.05
+            self._refetch_chain_tip_interval = float(slot_length / active_slots_coefficient)
 
-        self._utxo_cache = TTLCache(
-            ttl=self._refetch_chain_tip_interval, maxsize=utxo_cache_size
-        )
+        self._utxo_cache = TTLCache(ttl=self._refetch_chain_tip_interval, maxsize=utxo_cache_size)
         self._datum_cache = LRUCache(maxsize=datum_cache_size)
         self._docker_config = docker_config
         self._network_magic_number = network_magic_number
@@ -256,15 +250,11 @@ class CardanoCliChainContext(ChainContext):
                 if docker_config.host_socket is None:
                     client = docker.from_env()
                 else:
-                    client = docker.DockerClient(
-                        base_url=docker_config.host_socket.as_posix()
-                    )
+                    client = docker.DockerClient(base_url=docker_config.host_socket.as_posix())
 
                 container = client.containers.get(docker_config.container_name)
 
-                exec_result = container.exec_run(
-                    [self._binary.as_posix()] + cmd, stdout=True, stderr=True
-                )
+                exec_result = container.exec_run([self._binary.as_posix()] + cmd, stdout=True, stderr=True)
 
                 if exec_result.exit_code == 0:
                     output = exec_result.output.decode()
@@ -273,9 +263,7 @@ class CardanoCliChainContext(ChainContext):
                     error = exec_result.output.decode()
                     raise CardanoCliError(error)
             else:
-                result = subprocess.run(
-                    [self._binary.as_posix()] + cmd, capture_output=True, check=True
-                )
+                result = subprocess.run([self._binary.as_posix()] + cmd, capture_output=True, check=True)
                 return result.stdout.decode().strip()
         except subprocess.CalledProcessError as err:
             raise CardanoCliError(err.stderr.decode()) from err
@@ -287,9 +275,7 @@ class CardanoCliChainContext(ChainContext):
         return json.loads(result)
 
     def _query_current_protocol_params(self) -> JsonDict:
-        result = self._run_command(
-            ["query", "protocol-parameters"] + self._network_args
-        )
+        result = self._run_command(["query", "protocol-parameters"] + self._network_args)
         return json.loads(result)
 
     def _query_genesis_config(self) -> GenesisParameters:
@@ -364,7 +350,7 @@ class CardanoCliChainContext(ChainContext):
     @staticmethod
     def _get_script(
         reference_script: dict,
-    ) -> Union[PlutusV1Script, PlutusV2Script, NativeScript]:
+    ) -> Union[PlutusV1Script, PlutusV2Script, PlutusV3Script, NativeScript]:
         """
         Get a script object from a reference script dictionary.
         Args:
@@ -398,8 +384,7 @@ class CardanoCliChainContext(ChainContext):
             return self._utxo_cache[key]
 
         result = self._run_command(
-            ["query", "utxo", "--address", address, "--out-file", "/dev/stdout"]
-            + self._network_args
+            ["query", "utxo", "--address", address, "--out-file", "/dev/stdout"] + self._network_args
         )
 
         raw_utxos = json.loads(result)
@@ -441,11 +426,7 @@ class CardanoCliChainContext(ChainContext):
 
         value.multi_asset = multi_asset
 
-        datum_hash = (
-            DatumHash.from_primitive(utxo["datumhash"])
-            if utxo.get("datumhash") is not None
-            else None
-        )
+        datum_hash = DatumHash.from_primitive(utxo["datumhash"]) if utxo.get("datumhash") is not None else None
 
         datum: Optional[Datum] = None
 
@@ -509,29 +490,18 @@ class CardanoCliChainContext(ChainContext):
                 )
             except CardanoCliError:
                 try:
-                    self._run_command(
-                        ["transaction", "submit", "--tx-file", tmp_tx_file.name]
-                        + self._network_args
-                    )
+                    self._run_command(["transaction", "submit", "--tx-file", tmp_tx_file.name] + self._network_args)
                 except CardanoCliError as err:
-                    raise TransactionFailedException(
-                        "Failed to submit transaction"
-                    ) from err
+                    raise TransactionFailedException("Failed to submit transaction") from err
 
             # Get the transaction ID
             try:
-                txid = self._run_command(
-                    ["latest", "transaction", "txid", "--tx-file", tmp_tx_file.name]
-                )
+                txid = self._run_command(["latest", "transaction", "txid", "--tx-file", tmp_tx_file.name])
             except CardanoCliError:
                 try:
-                    txid = self._run_command(
-                        ["transaction", "txid", "--tx-file", tmp_tx_file.name]
-                    )
+                    txid = self._run_command(["transaction", "txid", "--tx-file", tmp_tx_file.name])
                 except CardanoCliError as err:
-                    raise PyCardanoException(
-                        f"Unable to get transaction id for {tmp_tx_file.name}"
-                    ) from err
+                    raise PyCardanoException(f"Unable to get transaction id for {tmp_tx_file.name}") from err
 
         return txid
 
@@ -556,7 +526,7 @@ class CardanoCliChainContext(ChainContext):
             return []
 
         pairs: List[Tuple[int, int]] = []
-        if hasattr(redeemers, "items"):  # Conway: a RedeemerKey -> RedeemerValue map
+        if isinstance(redeemers, RedeemerMap):  # Conway: a RedeemerKey -> RedeemerValue map
             for redeemer_key in redeemers.keys():
                 pairs.append((RedeemerTag(redeemer_key.tag).value, redeemer_key.index))
         else:  # Legacy: a plain list of Redeemer
@@ -603,15 +573,11 @@ class CardanoCliChainContext(ChainContext):
         """The installed cli version, for error messages; never raises."""
         try:
             return self.version().splitlines()[0].strip()
-        except (
-            Exception
-        ):  # noqa: BLE001 - diagnostics must not mask the original failure
+        except Exception:  # noqa: BLE001 - diagnostics must not mask the original failure
             return "cardano-cli version unknown"
 
     @classmethod
-    def _parse_script_costs(
-        cls, payload: Any, redeemer_keys: List[str]
-    ) -> Dict[str, ExecutionUnits]:
+    def _parse_script_costs(cls, payload: Any, redeemer_keys: List[str]) -> Dict[str, ExecutionUnits]:
         """Turn ``calculate-plutus-script-cost`` output into execution units per redeemer.
 
         The command reports one entry per Plutus script in the transaction. Entries that name
@@ -639,29 +605,21 @@ class CardanoCliChainContext(ChainContext):
                     payload = payload[wrapper]
                     break
         if not isinstance(payload, list):
-            raise TransactionFailedException(
-                f"Unexpected plutus script cost output: {payload!r}"
-            )
+            raise TransactionFailedException(f"Unexpected plutus script cost output: {payload!r}")
 
         costs: Dict[str, ExecutionUnits] = {}
         for position, entry in enumerate(payload):
             if not isinstance(entry, dict):
-                raise TransactionFailedException(
-                    f"Unexpected plutus script cost entry: {entry!r}"
-                )
+                raise TransactionFailedException(f"Unexpected plutus script cost entry: {entry!r}")
 
             units = entry.get("executionUnits", entry.get("execution_units", entry))
             if not isinstance(units, dict):
-                raise TransactionFailedException(
-                    f"Plutus script cost entry has no execution units: {entry!r}"
-                )
+                raise TransactionFailedException(f"Plutus script cost entry has no execution units: {entry!r}")
             memory = units.get("memory", units.get("mem"))
             steps = units.get("steps", units.get("cpu"))
             if memory is None or steps is None:
                 # A script the node could not run reports an error instead of a cost.
-                raise TransactionFailedException(
-                    f"Plutus script evaluation failed: {entry!r}"
-                )
+                raise TransactionFailedException(f"Plutus script evaluation failed: {entry!r}")
 
             validator = entry.get("validator")
             validator = validator if isinstance(validator, dict) else {}
@@ -737,13 +695,8 @@ class CardanoCliChainContext(ChainContext):
                 + socket_args
                 + self._network_args
                 + tx_args,
-                ["transaction", "calculate-plutus-script-cost", "online"]
-                + socket_args
-                + self._network_args
-                + tx_args,
-                ["transaction", "calculate-plutus-script-cost"]
-                + self._network_args
-                + tx_args,
+                ["transaction", "calculate-plutus-script-cost", "online"] + socket_args + self._network_args + tx_args,
+                ["transaction", "calculate-plutus-script-cost"] + self._network_args + tx_args,
             ]
 
             result = None
@@ -774,9 +727,7 @@ class CardanoCliChainContext(ChainContext):
         try:
             payload = json.loads(result)
         except json.JSONDecodeError as err:
-            raise TransactionFailedException(
-                f"Unable to parse plutus script cost output: {result!r}"
-            ) from err
+            raise TransactionFailedException(f"Unable to parse plutus script cost output: {result!r}") from err
 
         return self._parse_script_costs(payload, redeemer_keys)
 
@@ -913,9 +864,7 @@ class CardanoCliChainContext(ChainContext):
         if stripped.startswith("["):
             # Newer releases can emit a JSON array instead of one id per line.
             payload = self._load_json(stripped, "query stake-pools")
-            entries = (
-                [str(entry) for entry in payload] if isinstance(payload, list) else []
-            )
+            entries = [str(entry) for entry in payload] if isinstance(payload, list) else []
         else:
             entries = [line.strip() for line in stripped.splitlines() if line.strip()]
 
@@ -923,9 +872,7 @@ class CardanoCliChainContext(ChainContext):
         for entry in entries:
             try:
                 pools.append(PoolOperator.from_primitive(entry))
-            except (
-                Exception
-            ) as err:  # noqa: BLE001 - any decoding failure is fatal here
+            except Exception as err:  # noqa: BLE001 - any decoding failure is fatal here
                 raise CardanoCLIError(
                     command="query stake-pools",
                     message=f"Unable to decode stake pool id {entry!r}: {err}",
@@ -962,9 +909,7 @@ class CardanoCliChainContext(ChainContext):
         pool_operator = self._pool_operator(pool_id)
         bech32_pool_id = pool_operator.encode()
 
-        pool_state = self._query_json(
-            ["query", "pool-state", "--stake-pool-id", bech32_pool_id]
-        )
+        pool_state = self._query_json(["query", "pool-state", "--stake-pool-id", bech32_pool_id])
         pool_entry = self._pool_keyed_value(pool_state, pool_operator)
         if not isinstance(pool_entry, dict):
             raise CardanoCLIError(
@@ -983,35 +928,25 @@ class CardanoCliChainContext(ChainContext):
 
         active_stake: Optional[int] = None
         active_size: Optional[Decimal] = None
-        snapshot = self._query_json(
-            ["query", "stake-snapshot", "--stake-pool-id", bech32_pool_id]
-        )
+        snapshot = self._query_json(["query", "stake-snapshot", "--stake-pool-id", bech32_pool_id])
         if isinstance(snapshot, dict):
             pool_snapshot = self._pool_keyed_value(snapshot.get("pools"), pool_operator)
             if isinstance(pool_snapshot, dict):
                 active_stake = self._parse_lovelace(pool_snapshot.get("stakeSet"))
                 total = snapshot.get("total")
-                total_set = (
-                    self._parse_lovelace(total.get("stakeSet"))
-                    if isinstance(total, dict)
-                    else None
-                )
+                total_set = self._parse_lovelace(total.get("stakeSet")) if isinstance(total, dict) else None
                 if active_stake is not None and total_set:
                     active_size = Decimal(active_stake) / Decimal(total_set)
 
         opcert_counter: Optional[int] = None
         protocol_state = self._query_json(["query", "protocol-state"])
         if isinstance(protocol_state, dict):
-            counter = self._pool_keyed_value(
-                protocol_state.get("oCertCounters"), pool_operator
-            )
+            counter = self._pool_keyed_value(protocol_state.get("oCertCounters"), pool_operator)
             if isinstance(counter, int):
                 opcert_counter = counter
 
         retiring_epoch = pool_entry.get("retiring")
-        status = (
-            PoolStatus.REGISTERED if retiring_epoch is None else PoolStatus.RETIRING
-        )
+        status = PoolStatus.REGISTERED if retiring_epoch is None else PoolStatus.RETIRING
 
         return StakePoolInfo(
             pool_params=pool_params,
@@ -1053,11 +988,7 @@ class CardanoCliChainContext(ChainContext):
                 message=(
                     "cardano-cli reads the operational certificate from a local file, "
                     "so kes_period_info needs op_cert"
-                    + (
-                        f"; the pool id {pool.encode()} alone is not enough."
-                        if pool is not None
-                        else "."
-                    )
+                    + (f"; the pool id {pool.encode()} alone is not enough." if pool is not None else ".")
                 ),
             )
 
@@ -1155,14 +1086,8 @@ class CardanoCliChainContext(ChainContext):
                 no credential to query by, or the cli output cannot be parsed.
         """
         if drep.kind in (DRepKind.ALWAYS_ABSTAIN, DRepKind.ALWAYS_NO_CONFIDENCE):
-            key = (
-                "drep-alwaysAbstain"
-                if drep.kind is DRepKind.ALWAYS_ABSTAIN
-                else "drep-alwaysNoConfidence"
-            )
-            payload = self._query_json(
-                ["query", "drep-stake-distribution", "--all-dreps", "--output-json"]
-            )
+            key = "drep-alwaysAbstain" if drep.kind is DRepKind.ALWAYS_ABSTAIN else "drep-alwaysNoConfidence"
+            payload = self._query_json(["query", "drep-stake-distribution", "--all-dreps", "--output-json"])
             # --all-dreps enumerates every DRep, so a predefined DRep absent
             # from the listing has no delegated stake. That is a measurement,
             # not a missing figure, so it stays 0 rather than None.
@@ -1186,11 +1111,7 @@ class CardanoCliChainContext(ChainContext):
                 message=f"DRep {drep} carries no credential to query by",
             )
 
-        flag = (
-            "--drep-script-hash"
-            if isinstance(credential, ScriptHash)
-            else "--drep-key-hash"
-        )
+        flag = "--drep-script-hash" if isinstance(credential, ScriptHash) else "--drep-key-hash"
         payload = self._query_json(
             [
                 "query",
@@ -1205,11 +1126,7 @@ class CardanoCliChainContext(ChainContext):
         state = None
         if isinstance(payload, list):
             for entry in payload:
-                if (
-                    isinstance(entry, list)
-                    and len(entry) == 2
-                    and isinstance(entry[1], dict)
-                ):
+                if isinstance(entry, list) and len(entry) == 2 and isinstance(entry[1], dict):
                     state = entry[1]
                     break
 
@@ -1257,29 +1174,19 @@ class CardanoCliChainContext(ChainContext):
         proposal = self._find_proposal(proposals, gov_action_id)
 
         next_ratify_state = gov_state.get("nextRatifyState")
-        next_ratify_state = (
-            next_ratify_state if isinstance(next_ratify_state, dict) else {}
-        )
-        in_enacted = self._action_listed(
-            next_ratify_state.get("enactedGovActions"), gov_action_id
-        )
-        in_expired = self._action_listed(
-            next_ratify_state.get("expiredGovActions"), gov_action_id
-        )
+        next_ratify_state = next_ratify_state if isinstance(next_ratify_state, dict) else {}
+        in_enacted = self._action_listed(next_ratify_state.get("enactedGovActions"), gov_action_id)
+        in_expired = self._action_listed(next_ratify_state.get("expiredGovActions"), gov_action_id)
 
         proposed_in = proposal.get("proposedIn") if proposal is not None else None
         expires_after = proposal.get("expiresAfter") if proposal is not None else None
         expired_by_epoch = expires_after is not None and current_epoch > expires_after
 
         ratified_epoch = current_epoch if proposal is not None and in_enacted else None
-        dropped_epoch = (
-            current_epoch if ratified_epoch is None and not proposals else None
-        )
+        dropped_epoch = current_epoch if ratified_epoch is None and not proposals else None
         expired_epoch = (
             current_epoch
-            if ratified_epoch is None
-            and dropped_epoch is None
-            and (in_expired or proposal is None or expired_by_epoch)
+            if ratified_epoch is None and dropped_epoch is None and (in_expired or proposal is None or expired_by_epoch)
             else None
         )
 
@@ -1348,9 +1255,7 @@ class CardanoCliChainContext(ChainContext):
             gov_action_id = self._proposal_action_id(proposal)
             if gov_action_id is None:
                 continue
-            actions.append(
-                self._build_gov_action_votes(proposal, gov_action_id, current_epoch)
-            )
+            actions.append(self._build_gov_action_votes(proposal, gov_action_id, current_epoch))
 
         return actions
 
@@ -1385,24 +1290,14 @@ class CardanoCliChainContext(ChainContext):
             )
 
         if cold is not None:
-            flag = (
-                "--cold-script-hash"
-                if isinstance(cold.credential, ScriptHash)
-                else "--cold-verification-key-hash"
-            )
+            flag = "--cold-script-hash" if isinstance(cold.credential, ScriptHash) else "--cold-verification-key-hash"
             credential_hash = cold.credential.payload.hex()
         else:
             assert hot is not None
-            flag = (
-                "--hot-script-hash"
-                if isinstance(hot.credential, ScriptHash)
-                else "--hot-key-hash"
-            )
+            flag = "--hot-script-hash" if isinstance(hot.credential, ScriptHash) else "--hot-key-hash"
             credential_hash = hot.credential.payload.hex()
 
-        payload = self._query_json(
-            ["query", "committee-state", flag, credential_hash, "--output-json"]
-        )
+        payload = self._query_json(["query", "committee-state", flag, credential_hash, "--output-json"])
         committee = payload.get("committee") if isinstance(payload, dict) else None
         if not isinstance(committee, dict) or not committee:
             raise CardanoCLIError(
@@ -1434,10 +1329,7 @@ class CardanoCliChainContext(ChainContext):
 
         return CommitteeMemberInfo(
             cold_credential=cold_credential,
-            hot_credential=self._parse_hot_creds_auth_status(
-                entry.get("hotCredsAuthStatus")
-            )
-            or hot,
+            hot_credential=self._parse_hot_creds_auth_status(entry.get("hotCredsAuthStatus")) or hot,
             expiration=entry.get("expiration"),
             status=self._parse_committee_member_status(entry.get("status")),
         )
@@ -1472,9 +1364,7 @@ class CardanoCliChainContext(ChainContext):
             members.append(
                 CommitteeMemberInfo(
                     cold_credential=cold_credential,
-                    hot_credential=self._parse_hot_creds_auth_status(
-                        entry.get("hotCredsAuthStatus")
-                    ),
+                    hot_credential=self._parse_hot_creds_auth_status(entry.get("hotCredsAuthStatus")),
                     expiration=entry.get("expiration"),
                     status=self._parse_committee_member_status(entry.get("status")),
                 )
@@ -1500,9 +1390,7 @@ class CardanoCliChainContext(ChainContext):
             :class:`pccontext.exceptions.CardanoCLIError`: When the output
                 cannot be parsed.
         """
-        payload = self._query_json(
-            ["query", "drep-stake-distribution", "--all-dreps", "--output-json"]
-        )
+        payload = self._query_json(["query", "drep-stake-distribution", "--all-dreps", "--output-json"])
 
         entries = []
         for key, value in self._key_value_entries(payload):
@@ -1526,9 +1414,7 @@ class CardanoCliChainContext(ChainContext):
             :class:`pccontext.exceptions.CardanoCLIError`: When the output
                 cannot be parsed.
         """
-        payload = self._query_json(
-            ["query", "spo-stake-distribution", "--all-spos", "--output-json"]
-        )
+        payload = self._query_json(["query", "spo-stake-distribution", "--all-spos", "--output-json"])
 
         entries = []
         for key, value in self._key_value_entries(payload):
@@ -1781,9 +1667,7 @@ class CardanoCliChainContext(ChainContext):
         try:
             key_hash = contents.get("keyHash")
             if isinstance(key_hash, str):
-                return CommitteeHotCredential(
-                    VerificationKeyHash(bytes.fromhex(key_hash))
-                )
+                return CommitteeHotCredential(VerificationKeyHash(bytes.fromhex(key_hash)))
             script_hash = contents.get("scriptHash")
             if isinstance(script_hash, str):
                 return CommitteeHotCredential(ScriptHash(bytes.fromhex(script_hash)))
@@ -2104,9 +1988,7 @@ class CardanoCliChainContext(ChainContext):
         return cls._parse_gov_action_id(proposal.get("actionId"))
 
     @classmethod
-    def _find_proposal(
-        cls, proposals: List[JsonDict], gov_action_id: GovActionId
-    ) -> Optional[JsonDict]:
+    def _find_proposal(cls, proposals: List[JsonDict], gov_action_id: GovActionId) -> Optional[JsonDict]:
         """Find the proposal for an action id.
 
         Args:
@@ -2175,9 +2057,7 @@ class CardanoCliChainContext(ChainContext):
             gov_action=self._parse_gov_action(procedure.get("govAction")),
             committee_votes=self._parse_committee_votes(proposal.get("committeeVotes")),
             drep_votes=self._parse_drep_votes(proposal.get("dRepVotes")),
-            stake_pool_votes=self._parse_stake_pool_votes(
-                proposal.get("stakePoolVotes")
-            ),
+            stake_pool_votes=self._parse_stake_pool_votes(proposal.get("stakePoolVotes")),
             deposit=self._parse_lovelace(procedure.get("deposit")),
             deposit_return_addr=self._parse_reward_address(procedure.get("returnAddr")),
             anchor=self._parse_anchor(procedure.get("anchor")),
@@ -2264,17 +2144,13 @@ class CardanoCliChainContext(ChainContext):
         contents = contents if isinstance(contents, list) else []
 
         def previous(index: int = 0) -> Optional[GovActionId]:
-            return (
-                self._parse_gov_action_id(contents[index])
-                if len(contents) > index
-                else None
-            )
+            return self._parse_gov_action_id(contents[index]) if len(contents) > index else None
 
-        def script_hash(index: int) -> Optional[ScriptHash]:
+        def script_hash(index: int) -> Optional[PolicyHash]:
             if len(contents) <= index or not isinstance(contents[index], str):
                 return None
             try:
-                return ScriptHash(bytes.fromhex(contents[index]))
+                return PolicyHash(bytes.fromhex(contents[index]))
             except (AssertionError, ValueError):
                 return None
 
@@ -2418,24 +2294,14 @@ class CardanoCliChainContext(ChainContext):
             collateral_percentage=integer("collateralPercentage"),
             max_collateral_inputs=integer("maxCollateralInputs"),
             min_committee_size=integer("committeeMinSize", "minCommitteeSize"),
-            committee_term_limit=integer(
-                "committeeMaxTermLength", "committeeTermLimit"
-            ),
-            governance_action_validity_period=integer(
-                "govActionLifetime", "governanceActionValidityPeriod"
-            ),
-            governance_action_deposit=integer(
-                "govActionDeposit", "governanceActionDeposit"
-            ),
+            committee_term_limit=integer("committeeMaxTermLength", "committeeTermLimit"),
+            governance_action_validity_period=integer("govActionLifetime", "governanceActionValidityPeriod"),
+            governance_action_deposit=integer("govActionDeposit", "governanceActionDeposit"),
             drep_deposit=integer("dRepDeposit", "drepDeposit"),
             drep_inactivity_period=integer("dRepActivity", "drepInactivityPeriod"),
-            min_fee_ref_script_cost=fraction(
-                "minFeeRefScriptCostPerByte", "minFeeRefScriptCoinsPerByte"
-            ),
+            min_fee_ref_script_cost=fraction("minFeeRefScriptCostPerByte", "minFeeRefScriptCoinsPerByte"),
             max_tx_ex_units=execution_units("maxTxExecutionUnits", "maxTxExUnits"),
-            max_block_ex_units=execution_units(
-                "maxBlockExecutionUnits", "maxBlockExUnits"
-            ),
+            max_block_ex_units=execution_units("maxBlockExecutionUnits", "maxBlockExUnits"),
         )
 
         cost_models = params.get("costModels")
@@ -2447,9 +2313,7 @@ class CardanoCliChainContext(ChainContext):
             memory_price = cls._parse_fraction(prices.get("priceMemory"))
             step_price = cls._parse_fraction(prices.get("priceSteps"))
             if memory_price is not None and step_price is not None:
-                update.execution_costs = ExUnitPrices(
-                    mem_price=memory_price, step_price=step_price
-                )
+                update.execution_costs = ExUnitPrices(mem_price=memory_price, step_price=step_price)
 
         pool_thresholds = params.get("poolVotingThresholds")
         if isinstance(pool_thresholds, dict):
@@ -2464,9 +2328,7 @@ class CardanoCliChainContext(ChainContext):
                 )
             ]
             if all(value is not None for value in values):
-                update.pool_voting_thresholds = PoolVotingThresholds(
-                    *cast(List[Fraction], values)
-                )
+                update.pool_voting_thresholds = PoolVotingThresholds(*cast(List[Fraction], values))
 
         drep_thresholds = params.get("dRepVotingThresholds")
         if isinstance(drep_thresholds, dict):
@@ -2486,9 +2348,7 @@ class CardanoCliChainContext(ChainContext):
                 )
             ]
             if all(value is not None for value in values):
-                update.drep_voting_thresholds = DRepVotingThresholds(
-                    *cast(List[Fraction], values)
-                )
+                update.drep_voting_thresholds = DRepVotingThresholds(*cast(List[Fraction], values))
 
         return update
 
@@ -2540,9 +2400,7 @@ class CardanoCliChainContext(ChainContext):
                 message=f"Pool parameters are malformed: {params!r}",
             )
 
-        reward_account = self._reward_account_bytes(
-            required("spsAccountId", "spsRewardAccount", "rewardAccount")
-        )
+        reward_account = self._reward_account_bytes(required("spsAccountId", "spsRewardAccount", "rewardAccount"))
         if reward_account is None:
             raise CardanoCLIError(
                 command="query pool-state",
@@ -2566,12 +2424,8 @@ class CardanoCliChainContext(ChainContext):
                 margin=margin,
                 reward_account=RewardAccountHash(reward_account),
                 pool_owners=pool_owners,
-                relays=self._parse_relays(
-                    params.get("spsRelays", params.get("relays"))
-                ),
-                pool_metadata=self._parse_pool_metadata(
-                    params.get("spsMetadata", params.get("metadata")), strict
-                ),
+                relays=self._parse_relays(params.get("spsRelays", params.get("relays"))),
+                pool_metadata=self._parse_pool_metadata(params.get("spsMetadata", params.get("metadata")), strict),
             )
         except (AssertionError, ValueError, TypeError) as err:
             raise CardanoCLIError(

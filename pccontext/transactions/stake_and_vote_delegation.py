@@ -57,10 +57,7 @@ def stake_and_vote_delegation(
     if (
         stake_address_info is None
         or len(stake_address_info) == 0
-        or (
-            not stake_address_info[0].active
-            and stake_address_info[0].active_epoch is None
-        )
+        or (not stake_address_info[0].active and stake_address_info[0].active_epoch is None)
     ):
         raise TransactionError("Staking Address may not be on chain.")
 

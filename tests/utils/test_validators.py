@@ -1,5 +1,3 @@
-import argparse
-
 import pytest
 
 from pccontext.utils.validators import check_ada_handle_format

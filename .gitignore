@@ -714,3 +714,4 @@ cython_debug/
 .idea/
 
 /.cbor2_version
+.venvs/

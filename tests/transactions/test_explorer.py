@@ -58,37 +58,23 @@ class TestBlockchainExplorerEnum:
 
     def test_description_adastat(self):
         """Test AdaStat description"""
-        assert (
-            BlockchainExplorer.ADASTAT.description
-            == "Explore transactions on adastat.net."
-        )
+        assert BlockchainExplorer.ADASTAT.description == "Explore transactions on adastat.net."
 
     def test_description_cardanoscan(self):
         """Test CardanoScan description"""
-        assert (
-            BlockchainExplorer.CARDANOSCAN.description
-            == "Explore transactions on cardanoscan.io."
-        )
+        assert BlockchainExplorer.CARDANOSCAN.description == "Explore transactions on cardanoscan.io."
 
     def test_description_cexplorer(self):
         """Test Cexplorer description"""
-        assert (
-            BlockchainExplorer.CEXPLORER.description
-            == "Explore transactions on cexplorer.io."
-        )
+        assert BlockchainExplorer.CEXPLORER.description == "Explore transactions on cexplorer.io."
 
     def test_description_eutxo(self):
         """Test Eutxo description"""
-        assert (
-            BlockchainExplorer.EUTXO.description == "Explore transactions on eutxo.org."
-        )
+        assert BlockchainExplorer.EUTXO.description == "Explore transactions on eutxo.org."
 
     def test_description_pooltool(self):
         """Test PoolTool description"""
-        assert (
-            BlockchainExplorer.POOLTOOL.description
-            == "Explore transactions on pooltool.io."
-        )
+        assert BlockchainExplorer.POOLTOOL.description == "Explore transactions on pooltool.io."
 
     def test_explorer_factory_adastat(self):
         """Test that explorer() returns AdaStat instance"""
@@ -134,17 +120,13 @@ class TestAdaStat:
     @pytest.fixture
     def pool_operator(self):
         """Create a test pool operator"""
-        pool_key_hash = PoolKeyHash.from_primitive(
-            "00000036d515e12e18cd3c88c74f09a67984c2c279a5296aa96efe89"
-        )
+        pool_key_hash = PoolKeyHash.from_primitive("00000036d515e12e18cd3c88c74f09a67984c2c279a5296aa96efe89")
         return PoolOperator(pool_key_hash=pool_key_hash)
 
     @pytest.fixture
     def transaction_id(self):
         """Create a test transaction ID"""
-        return TransactionId.from_primitive(
-            "1e043f100dce12d107f679685acd2fc0610e10f72a92d412794c9773d11d8477"
-        )
+        return TransactionId.from_primitive("1e043f100dce12d107f679685acd2fc0610e10f72a92d412794c9773d11d8477")
 
     def test_network_urls(self, explorer):
         """Test that AdaStat has correct network URLs"""
@@ -230,17 +212,13 @@ class TestCardanoScan:
     @pytest.fixture
     def pool_operator(self):
         """Create a test pool operator"""
-        pool_key_hash = PoolKeyHash.from_primitive(
-            "00000036d515e12e18cd3c88c74f09a67984c2c279a5296aa96efe89"
-        )
+        pool_key_hash = PoolKeyHash.from_primitive("00000036d515e12e18cd3c88c74f09a67984c2c279a5296aa96efe89")
         return PoolOperator(pool_key_hash=pool_key_hash)
 
     @pytest.fixture
     def transaction_id(self):
         """Create a test transaction ID"""
-        return TransactionId.from_primitive(
-            "1e043f100dce12d107f679685acd2fc0610e10f72a92d412794c9773d11d8477"
-        )
+        return TransactionId.from_primitive("1e043f100dce12d107f679685acd2fc0610e10f72a92d412794c9773d11d8477")
 
     def test_network_urls(self, explorer):
         """Test that CardanoScan has correct network URLs"""
@@ -350,9 +328,7 @@ class TestCexplorer:
     @pytest.fixture
     def pool_operator(self):
         """Create a test pool operator"""
-        pool_key_hash = PoolKeyHash.from_primitive(
-            "00000036d515e12e18cd3c88c74f09a67984c2c279a5296aa96efe89"
-        )
+        pool_key_hash = PoolKeyHash.from_primitive("00000036d515e12e18cd3c88c74f09a67984c2c279a5296aa96efe89")
         return PoolOperator(pool_key_hash=pool_key_hash)
 
     def test_network_urls(self, explorer):
@@ -461,9 +437,7 @@ class TestEutxo:
     @pytest.fixture
     def pool_operator(self):
         """Create a test pool operator"""
-        pool_key_hash = PoolKeyHash.from_primitive(
-            "00000036d515e12e18cd3c88c74f09a67984c2c279a5296aa96efe89"
-        )
+        pool_key_hash = PoolKeyHash.from_primitive("00000036d515e12e18cd3c88c74f09a67984c2c279a5296aa96efe89")
         return PoolOperator(pool_key_hash=pool_key_hash)
 
     def test_network_urls(self, explorer):
@@ -528,17 +502,13 @@ class TestPoolTool:
     @pytest.fixture
     def pool_operator(self):
         """Create a test pool operator"""
-        pool_key_hash = PoolKeyHash.from_primitive(
-            "00000036d515e12e18cd3c88c74f09a67984c2c279a5296aa96efe89"
-        )
+        pool_key_hash = PoolKeyHash.from_primitive("00000036d515e12e18cd3c88c74f09a67984c2c279a5296aa96efe89")
         return PoolOperator(pool_key_hash=pool_key_hash)
 
     @pytest.fixture
     def transaction_id(self):
         """Create a test transaction ID"""
-        return TransactionId.from_primitive(
-            "1e043f100dce12d107f679685acd2fc0610e10f72a92d412794c9773d11d8477"
-        )
+        return TransactionId.from_primitive("1e043f100dce12d107f679685acd2fc0610e10f72a92d412794c9773d11d8477")
 
     def test_network_urls(self, explorer):
         """Test that PoolTool has correct network URLs"""
@@ -550,9 +520,7 @@ class TestPoolTool:
         """Test view_account for mainnet"""
         url = explorer.view_account(address, Network.MAINNET)
         # Note: PoolTool uses address.p attribute
-        assert (
-            url == f"https://pooltool.io/address/{address.staking_part.payload.hex()}"
-        )
+        assert url == f"https://pooltool.io/address/{address.staking_part.payload.hex()}"
 
     def test_view_account_preprod_raises_error(self, explorer, address):
         """Test view_account raises error for preprod"""
@@ -592,7 +560,13 @@ class TestPoolTool:
 
     def test_view_transaction_not_implemented(self, explorer, transaction_id):
         """Test that view_transaction raises NotImplementedError"""
-        with pytest.raises(
-            NotImplementedError, match="view_transaction not implemented"
-        ):
+        with pytest.raises(NotImplementedError, match="view_transaction not implemented"):
             explorer.view_transaction(transaction_id, Network.MAINNET)
+
+
+def test_view_account_needs_a_stake_credential():
+    """An enterprise address has no stake credential to key an account page by."""
+    enterprise = Address.from_primitive("addr1vx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzers66hrl8")
+
+    with pytest.raises(ValueError, match="no stake credential"):
+        AdaStat().view_account(enterprise, Network.MAINNET)

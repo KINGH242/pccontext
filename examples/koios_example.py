@@ -1,8 +1,6 @@
 import os
 
-from blockfrost import ApiUrls
-
-from pccontext import BlockFrostChainContext, KoiosChainContext
+from pccontext import KoiosChainContext
 
 
 def main():

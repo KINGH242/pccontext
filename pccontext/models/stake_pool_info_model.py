@@ -26,29 +26,19 @@ class StakePoolInfo(BaseModel):
     pool_params: Optional[PoolParams] = field(default=None)
     """The pool's registered parameters."""
 
-    live_pledge: Optional[int] = field(
-        default=None, metadata={"aliases": ["live_pledge", "livePledge"]}
-    )
+    live_pledge: Optional[int] = field(default=None, metadata={"aliases": ["live_pledge", "livePledge"]})
     """Lovelace currently pledged by the owners."""
 
-    live_stake: Optional[int] = field(
-        default=None, metadata={"aliases": ["live_stake", "liveStake"]}
-    )
+    live_stake: Optional[int] = field(default=None, metadata={"aliases": ["live_stake", "liveStake"]})
     """Lovelace currently delegated to the pool."""
 
-    live_size: Optional[Decimal] = field(
-        default=None, metadata={"aliases": ["live_size", "liveSize"]}
-    )
+    live_size: Optional[Decimal] = field(default=None, metadata={"aliases": ["live_size", "liveSize"]})
     """The pool's live stake as a fraction of total live stake."""
 
-    active_stake: Optional[int] = field(
-        default=None, metadata={"aliases": ["active_stake", "activeStake"]}
-    )
+    active_stake: Optional[int] = field(default=None, metadata={"aliases": ["active_stake", "activeStake"]})
     """Lovelace counted toward this epoch's rewards."""
 
-    active_size: Optional[Decimal] = field(
-        default=None, metadata={"aliases": ["active_size", "activeSize"]}
-    )
+    active_size: Optional[Decimal] = field(default=None, metadata={"aliases": ["active_size", "activeSize"]})
     """The pool's active stake as a fraction of total active stake."""
 
     opcert_counter: Optional[int] = field(

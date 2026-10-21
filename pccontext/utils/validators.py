@@ -20,9 +20,7 @@ def check_ada_handle_format(handle):
     if handle is not None and bool(re.match(pattern, handle.lower())):
         return handle
     else:
-        raise ValueError(
-            f"Invalid AdaHandle format: {handle} (must be in the format $handle or $handle@subhandle)"
-        )
+        raise ValueError(f"Invalid AdaHandle format: {handle} (must be in the format $handle or $handle@subhandle)")
 
 
 def greater_than_version(version: Tuple[int, int]) -> bool:

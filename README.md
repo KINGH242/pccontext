@@ -13,8 +13,8 @@ contexts — a page on what differs between them.
 To build it locally:
 
 ```bash
-poetry install --with docs
-make docs
+uv sync --group docs
+just docs
 ```
 
 ### Chain Context Usage
@@ -131,15 +131,11 @@ import os
 # Setup chain context
 network = Network.PREPROD
 blockfrost_api_key = os.getenv("BLOCKFROST_API_KEY_PREPROD")
-chain_context = BlockFrostChainContext(
-    project_id=blockfrost_api_key, network=network
-)
+chain_context = BlockFrostChainContext(project_id=blockfrost_api_key, network=network)
 
 # Generate keys
 payment_signing_key = PaymentSigningKey.generate()
-payment_verification_key = PaymentVerificationKey.from_signing_key(
-    payment_signing_key
-)
+payment_verification_key = PaymentVerificationKey.from_signing_key(payment_signing_key)
 
 stake_signing_key = StakeSigningKey.generate()
 stake_verification_key = StakeVerificationKey.from_signing_key(stake_signing_key)
@@ -167,26 +163,21 @@ unsigned_transaction = stake_address_registration(
     context=chain_context,
     stake_vkey=stake_verification_key,
     send_from_addr=address,
-    signing_keys=None  # Don't sign yet
+    signing_keys=None,  # Don't sign yet
 )
 
 # Create verification key witnesses manually
 verification_key_witnesses = [
     VerificationKeyWitness(
-        vkey=payment_verification_key,
-        signature=payment_signing_key.sign(unsigned_transaction.transaction_body.hash())
+        vkey=payment_verification_key, signature=payment_signing_key.sign(unsigned_transaction.transaction_body.hash())
     ),
     VerificationKeyWitness(
-        vkey=stake_verification_key,
-        signature=stake_signing_key.sign(unsigned_transaction.transaction_body.hash())
-    )
+        vkey=stake_verification_key, signature=stake_signing_key.sign(unsigned_transaction.transaction_body.hash())
+    ),
 ]
 
 # Assemble a transaction with witnesses
-assembled_tx = assemble_transaction(
-    transaction=unsigned_transaction,
-    vkey_witnesses=verification_key_witnesses
-)
+assembled_tx = assemble_transaction(transaction=unsigned_transaction, vkey_witnesses=verification_key_witnesses)
 ```
 
 #### sign_transaction
@@ -199,7 +190,7 @@ unsigned_transaction = stake_address_registration(
     context=chain_context,
     stake_vkey=stake_verification_key,
     send_from_addr=address,
-    signing_keys=None  # Don't sign yet
+    signing_keys=None,  # Don't sign yet
 )
 
 # Sign a transaction with provided keys
@@ -219,7 +210,7 @@ transaction = stake_address_registration(
     context=chain_context,
     stake_vkey=stake_verification_key,
     send_from_addr=address,
-    signing_keys=None  # Don't sign yet
+    signing_keys=None,  # Don't sign yet
 )
 
 # Generate verification key witnesses for a transaction

@@ -41,43 +41,27 @@ def test_annotated_signature_initialization(signature, public_key):
             123,
             1,
             [
-                AnnotatedSignature(
-                    signature="valid_signature_1", public_key="valid_public_key_1"
-                ),
-                AnnotatedSignature(
-                    signature="valid_signature_2", public_key="valid_public_key_2"
-                ),
+                AnnotatedSignature(signature="valid_signature_1", public_key="valid_public_key_1"),
+                AnnotatedSignature(signature="valid_signature_2", public_key="valid_public_key_2"),
             ],
         ),
         (
             "string_value",
             2,
-            [
-                AnnotatedSignature(
-                    signature="valid_signature_1", public_key="valid_public_key_1"
-                )
-            ],
+            [AnnotatedSignature(signature="valid_signature_1", public_key="valid_public_key_1")],
         ),
         (
             b"bytes_value",
             3,
             [
-                AnnotatedSignature(
-                    signature="valid_signature_1", public_key="valid_public_key_1"
-                ),
-                AnnotatedSignature(
-                    signature="valid_signature_2", public_key="valid_public_key_2"
-                ),
+                AnnotatedSignature(signature="valid_signature_1", public_key="valid_public_key_1"),
+                AnnotatedSignature(signature="valid_signature_2", public_key="valid_public_key_2"),
             ],
         ),
         (
             HttpUrl("http://example.com"),
             4,
-            [
-                AnnotatedSignature(
-                    signature="valid_signature_1", public_key="valid_public_key_1"
-                )
-            ],
+            [AnnotatedSignature(signature="valid_signature_1", public_key="valid_public_key_1")],
         ),
     ],
     ids=[
@@ -89,9 +73,7 @@ def test_annotated_signature_initialization(signature, public_key):
 )
 def test_token_metadata_property_happy_path(value, sequence_number, signatures):
     # Act
-    token_metadata_property = TokenMetadataProperty(
-        value=value, sequence_number=sequence_number, signatures=signatures
-    )
+    token_metadata_property = TokenMetadataProperty(value=value, sequence_number=sequence_number, signatures=signatures)
 
     # Assert
     assert token_metadata_property.value == value
@@ -107,12 +89,8 @@ def test_token_metadata_property_happy_path(value, sequence_number, signatures):
             "subject1",
             TokenMetadataProperty(value="policy1", sequence_number=1, signatures=[]),
             TokenMetadataProperty(value="name1", sequence_number=2, signatures=[]),
-            TokenMetadataProperty(
-                value="http://example.com", sequence_number=3, signatures=[]
-            ),
-            TokenMetadataProperty(
-                value="description1", sequence_number=4, signatures=[]
-            ),
+            TokenMetadataProperty(value="http://example.com", sequence_number=3, signatures=[]),
+            TokenMetadataProperty(value="description1", sequence_number=4, signatures=[]),
             TokenMetadataProperty(value="logo1", sequence_number=5, signatures=[]),
             TokenMetadataProperty(value="ticker1", sequence_number=6, signatures=[]),
         ),
@@ -120,12 +98,8 @@ def test_token_metadata_property_happy_path(value, sequence_number, signatures):
             "subject2",
             TokenMetadataProperty(value="policy2", sequence_number=1, signatures=[]),
             TokenMetadataProperty(value="name2", sequence_number=2, signatures=[]),
-            TokenMetadataProperty(
-                value="http://example.com", sequence_number=3, signatures=[]
-            ),
-            TokenMetadataProperty(
-                value="description2", sequence_number=4, signatures=[]
-            ),
+            TokenMetadataProperty(value="http://example.com", sequence_number=3, signatures=[]),
+            TokenMetadataProperty(value="description2", sequence_number=4, signatures=[]),
             TokenMetadataProperty(value="logo2", sequence_number=5, signatures=[]),
             TokenMetadataProperty(value="ticker2", sequence_number=6, signatures=[]),
         ),

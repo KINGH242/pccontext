@@ -8,7 +8,6 @@ from pycardano import (
     InvalidBefore,
     InvalidHereAfter,
     Metadata,
-    NativeScript,
     NonEmptyOrderedSet,
     PaymentSigningKey,
     PaymentVerificationKey,
@@ -74,12 +73,8 @@ def test_assemble_transaction(
     )
     transaction.auxiliary_data = auxiliary_data
 
-    vk1 = VerificationKey.from_cbor(
-        "58206443a101bdb948366fc87369336224595d36d8b0eee5602cba8b81a024e58473"
-    )
-    vk2 = VerificationKey.from_cbor(
-        "58206443a101bdb948366fc87369336224595d36d8b0eee5602cba8b81a024e58475"
-    )
+    vk1 = VerificationKey.from_cbor("58206443a101bdb948366fc87369336224595d36d8b0eee5602cba8b81a024e58473")
+    vk2 = VerificationKey.from_cbor("58206443a101bdb948366fc87369336224595d36d8b0eee5602cba8b81a024e58475")
     spk1 = ScriptPubkey(key_hash=vk1.hash())
     spk2 = ScriptPubkey(key_hash=vk2.hash())
     before = InvalidHereAfter(123456789)
@@ -116,12 +111,8 @@ def test_assemble_transaction(
     transaction.transaction_witness_set.vkey_witnesses = initial_vkey_witnesses
 
     vkey_witnesses = [
-        VerificationKeyWitness(
-            payment_vkey, payment_skey.sign(transaction.transaction_body.hash())
-        ),
-        VerificationKeyWitness(
-            stake_vkey, stake_skey.sign(transaction.transaction_body.hash())
-        ),
+        VerificationKeyWitness(payment_vkey, payment_skey.sign(transaction.transaction_body.hash())),
+        VerificationKeyWitness(stake_vkey, stake_skey.sign(transaction.transaction_body.hash())),
     ]
 
     assembled_tx = assemble_transaction(
@@ -140,3 +131,35 @@ def test_assemble_transaction(
     assert assembled_tx.transaction_witness_set.plutus_v2_script == plutus_v2_script
     assert assembled_tx.transaction_witness_set.plutus_v3_script == plutus_v3_script
     assert len(assembled_tx.transaction_witness_set.vkey_witnesses) == 3
+
+
+def _bare_transaction():
+    from pycardano import Transaction, TransactionBody, TransactionInput, TransactionWitnessSet
+
+    body = TransactionBody(
+        inputs=[TransactionInput.from_primitive(["a" * 64, 0])],
+        outputs=[],
+        fee=0,
+    )
+    return Transaction(body, TransactionWitnessSet())
+
+
+def test_assemble_adds_bootstrap_witnesses_to_a_transaction_without_any():
+    # pycardano keeps bootstrap witnesses as raw [public key, signature, chain code, attributes].
+    witness = [b"\x01" * 32, b"\x02" * 64, b"\x03" * 32, b"\xa0"]
+    transaction = _bare_transaction()
+    assert transaction.transaction_witness_set.bootstrap_witness is None
+
+    assembled = assemble_transaction(transaction, bootstrap_witness=[witness])
+
+    assert assembled.transaction_witness_set.bootstrap_witness == [witness]
+
+
+def test_assemble_merges_plutus_data_given_as_an_indefinite_list():
+    first, second = MyTest(1, b"a", IndefiniteList([]), {}), MyTest(2, b"b", IndefiniteList([]), {})
+    transaction = _bare_transaction()
+    transaction.transaction_witness_set.plutus_data = [first]
+
+    assembled = assemble_transaction(transaction, plutus_data=IndefiniteList([second]))
+
+    assert list(assembled.transaction_witness_set.plutus_data) == [first, second]

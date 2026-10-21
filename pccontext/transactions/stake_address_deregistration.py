@@ -36,14 +36,8 @@ def stake_address_deregistration(
 
     stake_address_info = context.stake_address_info(str(stake_address))
 
-    if (
-        stake_address_info is None
-        or len(stake_address_info) == 0
-        or not stake_address_info[0].active
-    ):
-        raise TransactionError(
-            f"Stake-Address: {str(stake_address)} is not registered on the chain!"
-        )
+    if stake_address_info is None or len(stake_address_info) == 0 or not stake_address_info[0].active:
+        raise TransactionError(f"Stake-Address: {str(stake_address)} is not registered on the chain!")
 
     builder = TransactionBuilder(context)
 

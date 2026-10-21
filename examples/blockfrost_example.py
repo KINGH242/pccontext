@@ -11,9 +11,7 @@ def main():
     """
 
     blockfrost_api_key = os.getenv("BLOCKFROST_API_KEY")
-    chain_context = BlockFrostChainContext(
-        project_id=blockfrost_api_key, base_url=ApiUrls.mainnet.value
-    )
+    chain_context = BlockFrostChainContext(project_id=blockfrost_api_key, base_url=ApiUrls.mainnet.value)
 
     print(chain_context.protocol_param)
 

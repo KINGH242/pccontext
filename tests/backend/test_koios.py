@@ -39,9 +39,7 @@ TIP = {
 POOL_INFO = {
     "pool_id_bech32": "pool1z5uqdk7dzdxaae5633fqfcu2eqzy3a3rgtuvy087fdld7yws0xt",
     "pool_id_hex": "153806dbcd134ddee69a8c5204e38ac80448f62342f8c23cfe4b7edf",
-    "vrf_key_hash": (
-        "0220a5d08adbfe9554b52d7b2993be5892ac3ff340e674a377dea3e22ad1778b"
-    ),
+    "vrf_key_hash": ("0220a5d08adbfe9554b52d7b2993be5892ac3ff340e674a377dea3e22ad1778b"),
     "pledge": "484000000000",
     "fixed_cost": "170000000",
     "margin": 0.02,
@@ -127,8 +125,7 @@ class TestUtxo:
         "tx_hash": "54f054011b9dc179182b4b1ca8261b054d7e16915d153d170503939d1dc57608",
         "tx_index": 0,
         "address": (
-            "addr1qxzrmgjxqgfmvwykts6u3uuynyme66mz66uc3dtwsx2uncmh2g0kgte48r0"
-            "vvfl22u52j9f328yh8sfm5744wn29tfuqf87tt6"
+            "addr1qxzrmgjxqgfmvwykts6u3uuynyme66mz66uc3dtwsx2uncmh2g0kgte48r0vvfl22u52j9f328yh8sfm5744wn29tfuqf87tt6"
         ),
         "value": "431177674",
         "asset_list": [],
@@ -140,9 +137,7 @@ class TestUtxo:
 
     def test_returns_utxo_and_spent_flag(self, chain_context):
         with patch("koios_python.URLs.get_utxo_info", return_value=[self.UTXO_ROW]):
-            result = chain_context.utxo(
-                TransactionInput.from_primitive([self.UTXO_ROW["tx_hash"], 0])
-            )
+            result = chain_context.utxo(TransactionInput.from_primitive([self.UTXO_ROW["tx_hash"], 0]))
         assert result is not None
         utxo, is_spent = result
         assert is_spent is False
@@ -152,9 +147,7 @@ class TestUtxo:
         """Unlike a live-UTxO-set backend, Koios can say a UTxO was spent."""
         row = dict(self.UTXO_ROW, is_spent=True)
         with patch("koios_python.URLs.get_utxo_info", return_value=[row]):
-            result = chain_context.utxo(
-                TransactionInput.from_primitive([row["tx_hash"], 0])
-            )
+            result = chain_context.utxo(TransactionInput.from_primitive([row["tx_hash"], 0]))
         assert result is not None
         assert result[1] is True
 
@@ -162,19 +155,12 @@ class TestUtxo:
         """Koios sends lovelace as a string. Leaving it that way puts a str in
         Value.coin, which breaks fee arithmetic in the transaction builder."""
         with patch("koios_python.URLs.get_utxo_info", return_value=[self.UTXO_ROW]):
-            utxo, _ = chain_context.utxo(
-                TransactionInput.from_primitive([self.UTXO_ROW["tx_hash"], 0])
-            )
+            utxo, _ = chain_context.utxo(TransactionInput.from_primitive([self.UTXO_ROW["tx_hash"], 0]))
         assert isinstance(utxo.output.amount.coin, int)
 
     def test_returns_none_when_unknown(self, chain_context):
         with patch("koios_python.URLs.get_utxo_info", return_value=[]):
-            assert (
-                chain_context.utxo(
-                    TransactionInput.from_primitive([self.UTXO_ROW["tx_hash"], 0])
-                )
-                is None
-            )
+            assert chain_context.utxo(TransactionInput.from_primitive([self.UTXO_ROW["tx_hash"], 0])) is None
 
 
 class TestStakePools:
@@ -202,9 +188,7 @@ class TestStakePools:
 
     def test_stake_pool_info_builds_pool_params(self, chain_context):
         with patch("koios_python.URLs.get_pool_info", return_value=[POOL_INFO]):
-            params = chain_context.stake_pool_info(
-                POOL_INFO["pool_id_bech32"]
-            ).pool_params
+            params = chain_context.stake_pool_info(POOL_INFO["pool_id_bech32"]).pool_params
         assert params is not None
         assert params.pledge == 484000000000
         assert params.cost == 170000000
@@ -408,9 +392,7 @@ class TestDRepInfo:
 
 class TestCommitteeState:
     def test_maps_members_and_threshold(self, chain_context):
-        with patch(
-            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
-        ):
+        with patch("koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]):
             state = chain_context.committee_state()
         assert len(state.members) == 3
         assert state.threshold == pytest.approx(2 / 3)
@@ -418,9 +400,7 @@ class TestCommitteeState:
     def test_status_mapping(self, chain_context):
         """A term runs to the end of its expiration epoch, so a member whose
         expiration equals the current epoch is still serving."""
-        with patch(
-            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
-        ):
+        with patch("koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]):
             members = chain_context.committee_state().members
 
         # epoch 653: expiration 726 -> still serving
@@ -436,15 +416,10 @@ class TestCommitteeState:
             members=[dict(COMMITTEE_INFO["members"][0], expiration_epoch=653)],
         )
         with patch("koios_python.URLs.get_committee_info", return_value=[info]):
-            assert (
-                chain_context.committee_state().members[0].status
-                == CommitteeMemberStatus.ACTIVE
-            )
+            assert chain_context.committee_state().members[0].status == CommitteeMemberStatus.ACTIVE
 
     def test_script_and_key_credentials(self, chain_context):
-        with patch(
-            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
-        ):
+        with patch("koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]):
             members = chain_context.committee_state().members
         assert members[0].cold_credential is not None
         assert members[0].hot_credential is not None
@@ -460,17 +435,13 @@ class TestCommitteeState:
 
 class TestCommitteeMemberInfo:
     def test_lookup_by_cold_credential(self, chain_context):
-        with patch(
-            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
-        ):
+        with patch("koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]):
             target = chain_context.committee_state().members[0]
             found = chain_context.committee_member_info(cold=target.cold_credential)
         assert found.cold_credential == target.cold_credential
 
     def test_lookup_by_hot_credential(self, chain_context):
-        with patch(
-            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
-        ):
+        with patch("koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]):
             target = chain_context.committee_state().members[0]
             found = chain_context.committee_member_info(hot=target.hot_credential)
         assert found.hot_credential == target.hot_credential
@@ -483,9 +454,7 @@ class TestCommitteeMemberInfo:
         from pycardano import CommitteeColdCredential, VerificationKeyHash
 
         stranger = CommitteeColdCredential(VerificationKeyHash(b"\xff" * 28))
-        with patch(
-            "koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]
-        ):
+        with patch("koios_python.URLs.get_committee_info", return_value=[COMMITTEE_INFO]):
             with pytest.raises(ValueError, match="No committee member matched"):
                 chain_context.committee_member_info(cold=stranger)
 
@@ -539,9 +508,7 @@ class TestGovActions:
             patch("koios_python.URLs.get_proposal_list", return_value=[PROPOSAL]),
             patch(
                 "koios_python.URLs.get_proposal_votes",
-                return_value=[
-                    {"voter_role": "Martian", "voter_id": "x", "vote": "Yes"}
-                ],
+                return_value=[{"voter_role": "Martian", "voter_id": "x", "vote": "Yes"}],
             ),
         ):
             votes = chain_context.gov_action_votes(GovActionId.decode(PROPOSAL_ID))
@@ -549,9 +516,7 @@ class TestGovActions:
 
     def test_gov_actions_all(self, chain_context):
         with (
-            patch(
-                "koios_python.URLs.get_proposal_list", return_value=[PROPOSAL, PROPOSAL]
-            ),
+            patch("koios_python.URLs.get_proposal_list", return_value=[PROPOSAL, PROPOSAL]),
             patch("koios_python.URLs.get_proposal_votes", return_value=[]),
         ):
             results = chain_context.gov_actions_all()
@@ -564,9 +529,7 @@ class TestStakeDistributions:
             {"drep_id": DREP_ID, "epoch_no": 653, "amount": "500"},
             {"drep_id": "not-a-drep", "epoch_no": 653, "amount": "250"},
         ]
-        with patch(
-            "koios_python.URLs.get_drep_voting_power_history", return_value=rows
-        ):
+        with patch("koios_python.URLs.get_drep_voting_power_history", return_value=rows):
             entries = chain_context.drep_stake_distribution()
         assert [e.stake for e in entries] == [500, 250]
         # an unparseable id keeps its row rather than losing the stake
@@ -575,9 +538,7 @@ class TestStakeDistributions:
 
     def test_spo_distribution(self, chain_context):
         rows = [{"pool_id_bech32": "pool1x", "epoch_no": 653, "amount": "4419361614"}]
-        with patch(
-            "koios_python.URLs.get_pool_voting_power_history", return_value=rows
-        ):
+        with patch("koios_python.URLs.get_pool_voting_power_history", return_value=rows):
             entries = chain_context.spo_stake_distribution()
         assert entries[0].pool_id == "pool1x"
         assert entries[0].stake == 4419361614
@@ -621,9 +582,7 @@ class TestUnwrappedEndpointsDegradeGracefully:
             ("get_proposal_list", lambda c: c.gov_actions_all()),
         ],
     )
-    def test_missing_endpoint_raises_not_implemented(
-        self, chain_context, client_method, call
-    ):
+    def test_missing_endpoint_raises_not_implemented(self, chain_context, client_method, call):
         # Simulate a client that does not wrap the endpoint.
         with patch.object(type(chain_context.api), client_method, None, create=True):
             with pytest.raises(NotImplementedError) as exc:

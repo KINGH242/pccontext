@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, Union
 
@@ -56,7 +56,7 @@ class AddressInfo(BaseModel):
         metadata={"aliases": ["total_asset_count", "totalAssetCount"]},
     )
     date: Optional[datetime] = field(
-        default=datetime.now(timezone.utc),
+        default=datetime.now(UTC),
         metadata={"aliases": ["total_asset_count", "totalAssetCount"]},
     )
     used: Optional[bool] = False
@@ -64,14 +64,8 @@ class AddressInfo(BaseModel):
     stake_address_info: Optional[List[StakeAddressInfo]] = field(default_factory=list)
 
     def __post_init__(self):
-        if (
-            self.address is None
-            and self.address_file is None
-            and self.ada_handle is None
-        ):
-            raise ValueError(
-                "Address needs an address, AdaHandle or a path to the address file"
-            )
+        if self.address is None and self.address_file is None and self.ada_handle is None:
+            raise ValueError("Address needs an address, AdaHandle or a path to the address file")
 
         if self.address is not None and isinstance(self.address, str):
             object.__setattr__(
@@ -148,12 +142,10 @@ class AddressInfo(BaseModel):
         """
         transaction_input = TransactionInput(
             index=utxo["input"]["index"],
-            transaction_id=TransactionId.from_primitive(
-                utxo["input"]["transaction_id"]
-            ),
+            transaction_id=TransactionId.from_primitive(utxo["input"]["transaction_id"]),
         )
 
-        tx_out_address = AddressInfo.from_address(utxo["output"]["address"])
+        tx_out_address = Address.from_primitive(utxo["output"]["address"])
 
         multi_asset = MultiAsset()
         multi_asset_input = utxo["output"]["amount"]["multi_asset"]
@@ -166,7 +158,7 @@ class AddressInfo(BaseModel):
                 multi_asset.setdefault(policy, Asset())[asset_name] = amount
 
         transaction_output = TransactionOutput(
-            address=tx_out_address.address,
+            address=tx_out_address,
             amount=Value(
                 coin=utxo["output"]["amount"]["coin"],
                 multi_asset=multi_asset,
@@ -203,9 +195,7 @@ class AddressInfo(BaseModel):
             output_multi_asset[str(policy_id)] = {}
             for asset_name in multi_asset[policy_id]:
                 amount = multi_asset[policy_id][asset_name]
-                output_multi_asset[str(policy_id)][
-                    asset_name.payload.decode("utf-8")
-                ] = amount
+                output_multi_asset[str(policy_id)][asset_name.payload.decode("utf-8")] = amount
 
         return {
             "input": {
@@ -218,9 +208,7 @@ class AddressInfo(BaseModel):
                     "coin": utxo.output.amount.coin,
                     "multi_asset": output_multi_asset,
                 },
-                "datum_hash": (
-                    str(utxo.output.datum_hash) if utxo.output.datum_hash else None
-                ),
+                "datum_hash": (str(utxo.output.datum_hash) if utxo.output.datum_hash else None),
                 "datum": str(utxo.output.datum) if utxo.output.datum else None,
                 "script": str(utxo.output.script) if utxo.output.script else None,
             },

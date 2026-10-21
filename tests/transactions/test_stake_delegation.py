@@ -75,10 +75,5 @@ def test_stake_delegation_success(delegation_chain_context):
     pool_id = "dd0b5f0c8db566f23b3ac2ffd63c4b5ea2afe1d2ca7c9810b1827e2f"
     transaction = stake_delegation(delegation_chain_context, vk, pool_id, address)
     assert transaction.valid is True
-    assert (
-        transaction.transaction_body.certificates[0].stake_credential.credential
-        == vk.hash()
-    )
-    assert transaction.transaction_body.certificates[0].pool_keyhash == PoolKeyHash(
-        bytes.fromhex(pool_id)
-    )
+    assert transaction.transaction_body.certificates[0].stake_credential.credential == vk.hash()
+    assert transaction.transaction_body.certificates[0].pool_keyhash == PoolKeyHash(bytes.fromhex(pool_id))

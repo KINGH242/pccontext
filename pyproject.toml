@@ -8,13 +8,11 @@ authors = [
     { name = "Hareem Adderley", email = "hadderley@kingpinapps.com" },
 ]
 keywords = ["python", "cardano", "blockchain", "crypto"]
-requires-python = ">=3.10,<4.0"
+requires-python = ">=3.11"
 classifiers = [
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -24,7 +22,7 @@ dependencies = [
     "koios-python>=2.0.0,<3.0.0",
     "requests>=2.32.4,<3.0.0",
     "cachetools>=5.5.2,<6.0.0",
-    "ogmios>=1.4.2,<2.0.0",
+    "pyogmios>=1.0,<2.0",
     "pycardano>=0.19.0,<0.20.0",
     # Pinned below 6.0.0: pycardano's cbor2pure shim is incompatible with cbor2 6.x.
     # Floor of 5.9.0 addresses GHSA-3c37-wwvx-h642.
@@ -33,7 +31,8 @@ dependencies = [
     # pycardano. 0.7.0 is the floor: it adds the governance and network_eras
     # endpoints that backend uses.
     "blockfrost-python>=0.7.0,<1.0.0",
-    "yaci-client>=1.0,<2.0",
+    # 1.0.1 allows httpx 0.28 and declares its real floors (httpx 0.25.1, attrs 22.2).
+    "yaci-client>=1.0.1,<2.0",
 ]
 
 [project.urls]
@@ -42,49 +41,58 @@ repository = "https://github.com/KINGH242/pccontext.git"
 documentation = "https://pccontext.readthedocs.io/en/latest/"
 
 
-# Temporary: points koios-python at the fork branch that adds the Governance
-# endpoints, so they can be exercised here before the upstream PR is opened.
-# Must be removed before any release — a git dependency cannot be published.
-[tool.poetry.dependencies]
-koios-python = { git = "https://github.com/KINGH242/koios-python.git", branch = "feat/governance-api" }
-blockfrost-python = { git = "https://github.com/KINGH242/blockfrost-python.git", branch = "feat/governance-committee" }
-
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^9.0.3"
-black = "^26.3.1"
-flake8 = "^7.1.1"
-mypy = "^1.14.1"
-ruff = "^0.6.3"
-faker = "^28.4.1"
-pytest-cov = "^5.0.0"
-isort = "^5.13.2"
-flake8-pyproject = "^1.2.3"
-freezegun = "^1.5.1"
-
-
-[tool.poetry.group.docs.dependencies]
-sphinx = ">=8.1,<9.0"
-sphinx-rtd-theme = ">=3.0,<4.0"
-
+[dependency-groups]
+dev = [
+    { include-group = "lint" },
+    { include-group = "test" },
+    "commitizen>=4.8",
+    "pre-commit>=4.3",
+]
+lint = [
+    "ruff>=0.14",
+    "ty>=0.0.90",
+]
+test = [
+    "pytest>=9.0.3",
+    "pytest-cov>=7",
+    "pytest-xdist>=3.8",
+    "faker>=28.4.1",
+    "freezegun>=1.5.1",
+]
+docs = [
+    "sphinx>=8.1,<9.0",
+    "sphinx-rtd-theme>=3.0,<4.0",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.13.4,<0.14"]
+build-backend = "uv_build"
 
+[tool.uv]
+default-groups = ["dev"]
+
+# Temporary: koios-python 2.0.0 on PyPI lacks the Governance endpoints this package uses, so
+# resolve it from the fork branch that adds them. uv sources are not published, so a release
+# still declares koios-python from PyPI: do not release until a koios-python with
+# the Governance API is on PyPI and the floor in `dependencies` is raised to it.
+[tool.uv.sources]
+koios-python = { git = "https://github.com/KINGH242/koios-python.git", branch = "feat/governance-api" }
+
+[tool.uv.build-backend]
+module-name = "pccontext"
+module-root = ""
 
 [tool.pytest.ini_options]
-minversion = "6.0"
+minversion = "8.0"
 addopts = "-p no:cacheprovider"
 
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.8.2"
-version_files = [
-    "pccontext/__init__.py:__version__",
-    "pyproject.toml:version"
-]
+version_provider = "uv"
+tag_format = "v$version"
+legacy_tag_formats = ["$version"]
+version_files = ["pccontext/__init__.py:__version__"]
 update_changelog_on_bump = true
 style = [
     ["qmark", "fg:#ff9d00 bold"],
@@ -99,30 +107,30 @@ style = [
     ["disabled", "fg:#858585 italic"]
 ]
 
-[tool.flake8]
-ignore = ['E231', 'E241', 'D203', 'E126', 'W503', 'E203']
-exclude = ['.git', '__pycache__', 'build', 'E126', 'W503', 'E203']
-per-file-ignores = [
-    '__init__.py:F401',
-]
-max-line-length = 120
-count = true
-
-
 [tool.ruff]
-lint.ignore = [
-    "E501",
-    "F841",
-]
+target-version = "py311"
+line-length = 120
+extend-exclude = ["dist", "docs/build"]
 
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B"]
+# UP006/UP007/UP035/UP045: the models are rebuilt from runtime type hints (pycardano), which
+# does not understand `X | None` or the builtin generics, so Optional/Union/List stay as written.
+# B904/B018: existing patterns (re-raised errors, property reads in tests) kept as they are.
+ignore = ["E501", "F841", "UP006", "UP007", "UP035", "UP045", "B904", "B018", "B017", "F403", "F405"]
 
-[tool.isort]
-profile = "black"
-skip = ["pccontext/models/__init__.py"]
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
 
+[tool.ty.environment]
+python-version = "3.11"
 
-[tool.mypy]
-ignore_missing_imports = true
-disable_error_code = ["str-bytes-safe"]
-python_version = "3.10"
+[tool.ty.src]
+include = ["pccontext"]
 
+[tool.ty.rules]
+# Overrides here widen inherited attributes and methods to Optional on purpose (the backends
+# fill models from partial API responses).
+invalid-attribute-override = "ignore"
+invalid-method-override = "ignore"
+invalid-property-type-override = "ignore"

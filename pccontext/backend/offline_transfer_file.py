@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import contextlib
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, List, Optional, Tuple, Union
 
 from cachetools import func
-from pycardano import CommitteeColdCredential, CommitteeHotCredential, DRep
+from pycardano import (
+    CommitteeColdCredential,
+    CommitteeHotCredential,
+    DRep,
+    GovActionId,
+    PoolOperator,
+    Transaction,
+    TransactionInput,
+    UTxO,
+)
 from pycardano import GenesisParameters as PyCardanoGenesisParameters
-from pycardano import GovActionId
 from pycardano import Network as PyCardanoNetwork
-from pycardano import PoolOperator
 from pycardano import ProtocolParameters as PyCardanoProtocolParameters
-from pycardano import Transaction, TransactionInput, UTxO
 
 from pccontext.backend import ChainContext
 from pccontext.enums import (
@@ -49,9 +55,7 @@ from pccontext.utils import check_file_exists, dump_file, load_json_file
 __all__ = ["OfflineTransferFileContext"]
 
 
-def byron_to_shelley_epoch_transition(
-    network: Network, byron_to_shelley_epoch: Optional[int] = None
-) -> int:
+def byron_to_shelley_epoch_transition(network: Network, byron_to_shelley_epoch: Optional[int] = None) -> int:
     """
     The number of Byron Epochs before the Chain forks to Shelley-Era
     :return:
@@ -149,9 +153,7 @@ class OfflineTransferFileContext(ChainContext):
         """
         try:
             self.check()
-            return OfflineTransfer.from_json(
-                load_json_file(self._offline_transfer_file)
-            )
+            return OfflineTransfer.from_json(load_json_file(self._offline_transfer_file))
         except FileNotFoundError as e:
             raise OfflineTransferFileError(
                 f"Offline transfer file does not exist: {self._offline_transfer_file}"
@@ -159,9 +161,7 @@ class OfflineTransferFileContext(ChainContext):
 
     def _fetch_protocol_param(self) -> ProtocolParameters:
         if not self.offline_transfer.protocol:
-            raise OfflineTransferFileError(
-                "Protocol parameters not found in the offline transfer file."
-            )
+            raise OfflineTransferFileError("Protocol parameters not found in the offline transfer file.")
         result = self.offline_transfer.protocol.protocol_parameters
         if isinstance(result, ProtocolParameters):
             return result
@@ -172,9 +172,7 @@ class OfflineTransferFileContext(ChainContext):
 
     def _fetch_genesis_param(self) -> GenesisParameters:
         if not self.offline_transfer.protocol:
-            raise OfflineTransferFileError(
-                "Protocol parameters not found in the offline transfer file."
-            )
+            raise OfflineTransferFileError("Protocol parameters not found in the offline transfer file.")
         result = self.offline_transfer.protocol.genesis_parameters
         if isinstance(result, GenesisParameters):
             return result
@@ -202,23 +200,15 @@ class OfflineTransferFileContext(ChainContext):
         if isinstance(self.genesis_param.system_start, datetime):
             start_time_sec = int(self.genesis_param.system_start.timestamp())
         elif isinstance(self.genesis_param.system_start, str):
-            start_time_sec = int(
-                datetime.strptime(
-                    self.genesis_param.system_start, "%Y-%m-%dT%H:%M:%SZ"
-                ).timestamp()
-            )
+            start_time_sec = int(datetime.strptime(self.genesis_param.system_start, "%Y-%m-%dT%H:%M:%SZ").timestamp())
         else:
             start_time_sec = self.genesis_param.system_start  # in seconds (UTC)
 
-        current_time_sec = int(
-            datetime.now(timezone.utc).timestamp()
-        )  # in seconds (UTC)
+        current_time_sec = int(datetime.now(UTC).timestamp())  # in seconds (UTC)
 
         epoch_length = int(self.genesis_param.epoch_length)
 
-        current_epoch = (
-            current_time_sec - start_time_sec
-        ) / epoch_length  # returns a integer number, we like that
+        current_epoch = (current_time_sec - start_time_sec) / epoch_length  # returns a integer number, we like that
 
         return int(current_epoch)
 
@@ -260,26 +250,15 @@ class OfflineTransferFileContext(ChainContext):
         byron_genesis = self._genesis_param.byron_genesis
 
         if not shelley_genesis:
-            raise OfflineTransferFileError(
-                "Shelley Genesis not found in the offline transfer file."
-            )
+            raise OfflineTransferFileError("Shelley Genesis not found in the offline transfer file.")
 
         if not byron_genesis:
-            raise OfflineTransferFileError(
-                "Byron Genesis not found in the offline transfer file."
-            )
+            raise OfflineTransferFileError("Byron Genesis not found in the offline transfer file.")
 
-        if (
-            not self._offline_transfer.protocol
-            or not self._offline_transfer.protocol.network
-        ):
-            raise OfflineTransferFileError(
-                "Network not found in the offline transfer file protocol parameters."
-            )
+        if not self._offline_transfer.protocol or not self._offline_transfer.protocol.network:
+            raise OfflineTransferFileError("Network not found in the offline transfer file protocol parameters.")
 
-        byron_to_shelley_epochs = byron_to_shelley_epoch_transition(
-            self._offline_transfer.protocol.network
-        )
+        byron_to_shelley_epochs = byron_to_shelley_epoch_transition(self._offline_transfer.protocol.network)
 
         byron_slot_length = int(byron_genesis["blockVersionData"]["slotDuration"])
         byron_k = int(byron_genesis["protocolConsts"]["k"])
@@ -292,9 +271,7 @@ class OfflineTransferFileContext(ChainContext):
         current_time_sec = int(time.time())
 
         if current_time_sec < byron_end_time_sec:
-            current_tip = (
-                (current_time_sec - byron_start_time_sec) * 1000
-            ) / byron_slot_length
+            current_tip = ((current_time_sec - byron_start_time_sec) * 1000) / byron_slot_length
         else:
             byron_slots = byron_to_shelley_epochs * byron_epoch_length
             slot_length = int(shelley_genesis["slotLength"])
@@ -308,8 +285,7 @@ class OfflineTransferFileContext(ChainContext):
     def network(self) -> Optional[PyCardanoNetwork]:
         """Current Cardano network"""
         if self._offline_transfer.protocol and (
-            self._offline_transfer.protocol.network
-            and self._offline_transfer.protocol.network.value == "mainnet"
+            self._offline_transfer.protocol.network and self._offline_transfer.protocol.network.value == "mainnet"
         ):
             return PyCardanoNetwork.MAINNET
         return PyCardanoNetwork.TESTNET
@@ -362,7 +338,7 @@ class OfflineTransferFileContext(ChainContext):
             tx_json=tx_json,
         )
 
-        action = HistoryType.SAVE_TRANSACTION.value(tx.id)
+        action = HistoryType.SAVE_TRANSACTION.value(str(tx.id))
 
         self._offline_transfer.transactions.append(offline_transaction)
         self._offline_transfer.history.append(OfflineTransferHistory(action=action))
@@ -388,10 +364,7 @@ class OfflineTransferFileContext(ChainContext):
                 offline_address.stake_address_info or []
                 for offline_address in self._offline_transfer.addresses
                 if offline_address.stake_address_info
-                and any(
-                    stake_address == stake_info.address
-                    for stake_info in offline_address.stake_address_info
-                )
+                and any(stake_address == stake_info.address for stake_info in offline_address.stake_address_info)
             ),
             [],
         )
@@ -486,10 +459,7 @@ class OfflineTransferFileContext(ChainContext):
                 if operator.encode() == pool_id:
                     return info
 
-        raise OfflineTransferFileError(
-            f"Pool info for '{pool_id}' was not captured in the offline "
-            f"transfer file."
-        )
+        raise OfflineTransferFileError(f"Pool info for '{pool_id}' was not captured in the offline transfer file.")
 
     def kes_period_info(
         self,
@@ -517,9 +487,7 @@ class OfflineTransferFileContext(ChainContext):
         """
         infos = self._section("kes_period_infos")
         if not infos:
-            raise OfflineTransferFileError(
-                "The offline transfer file captured no KES period information."
-            )
+            raise OfflineTransferFileError("The offline transfer file captured no KES period information.")
         return infos[0]
 
     # -- Treasury ----------------------------------------------------------
@@ -559,9 +527,7 @@ class OfflineTransferFileContext(ChainContext):
             if info.drep == drep:
                 return info
 
-        raise OfflineTransferFileError(
-            "DRep info was not captured in the offline transfer file."
-        )
+        raise OfflineTransferFileError("DRep info was not captured in the offline transfer file.")
 
     def gov_action_info(self, gov_action_id: GovActionId) -> GovActionInfo:
         """Get the lifecycle information for a governance action.
@@ -597,8 +563,7 @@ class OfflineTransferFileContext(ChainContext):
                 return recorded.as_gov_action_info()
 
         raise OfflineTransferFileError(
-            f"Governance action '{gov_action_id.encode()}' was not captured in "
-            f"the offline transfer file."
+            f"Governance action '{gov_action_id.encode()}' was not captured in the offline transfer file."
         )
 
     def gov_action_votes(self, gov_action_id: GovActionId) -> GovActionVotes:
@@ -621,8 +586,7 @@ class OfflineTransferFileContext(ChainContext):
                 return recorded
 
         raise OfflineTransferFileError(
-            f"Votes for governance action '{gov_action_id.encode()}' were not "
-            f"captured in the offline transfer file."
+            f"Votes for governance action '{gov_action_id.encode()}' were not captured in the offline transfer file."
         )
 
     def gov_actions_all(self) -> List[GovActionVotes]:
@@ -716,9 +680,7 @@ class OfflineTransferFileContext(ChainContext):
             if hot is not None and member.hot_credential == hot:
                 return self._aged_status(member)
 
-        raise OfflineTransferFileError(
-            "No captured committee member matched the given credential."
-        )
+        raise OfflineTransferFileError("No captured committee member matched the given credential.")
 
     def committee_state(self) -> CommitteeStateInfo:
         """Get the full constitutional committee state.

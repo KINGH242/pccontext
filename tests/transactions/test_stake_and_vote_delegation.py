@@ -97,9 +97,7 @@ def test_stake_and_vote_delegation(delegation_chain_context, drep_kind, drep_id)
         "addr1x8nz307k3sr60gu0e47cmajssy4fmld7u493a4xztjrll0aj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrswgxsta"
     )
     pool_id = "dd0b5f0c8db566f23b3ac2ffd63c4b5ea2afe1d2ca7c9810b1827e2f"
-    transaction = stake_and_vote_delegation(
-        delegation_chain_context, vk, pool_id, address, drep_kind, drep_id
-    )
+    transaction = stake_and_vote_delegation(delegation_chain_context, vk, pool_id, address, drep_kind, drep_id)
     assert transaction.valid is True
     assert len(transaction.transaction_body.certificates) == 1
     certificate = transaction.transaction_body.certificates[0]

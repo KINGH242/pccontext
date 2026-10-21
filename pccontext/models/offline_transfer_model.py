@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
@@ -18,6 +18,7 @@ from pycardano import (
     PoolParams,
     Vote,
 )
+from pycardano.serialization import CBORSerializable
 
 from pccontext.enums import (
     CommitteeMemberStatus,
@@ -70,7 +71,7 @@ __all__ = [
 # stored in that form because a human reads the transfer file.
 # --------------------------------------------------------------------------
 
-C = TypeVar("C")
+C = TypeVar("C", bound=CBORSerializable)
 E = TypeVar("E", bound=Enum)
 
 
@@ -101,7 +102,7 @@ def _from_cbor_hex(cls: Type[C], value: Optional[Any]) -> Optional[C]:
     if value is None or isinstance(value, cls):
         return value
     with contextlib.suppress(Exception):
-        return cls.from_cbor(value)  # type: ignore[attr-defined]
+        return cls.from_cbor(value)
     return None
 
 
@@ -349,13 +350,9 @@ def _gov_action_votes_to_dict(votes: GovActionVotes) -> Dict:
     result = _gov_action_lifecycle_to_dict(votes)
     result.update(
         {
-            "committee_votes": [
-                _committee_vote_to_dict(v) for v in votes.committee_votes
-            ],
+            "committee_votes": [_committee_vote_to_dict(v) for v in votes.committee_votes],
             "drep_votes": [_drep_vote_to_dict(v) for v in votes.drep_votes],
-            "stake_pool_votes": [
-                _stake_pool_vote_to_dict(v) for v in votes.stake_pool_votes
-            ],
+            "stake_pool_votes": [_stake_pool_vote_to_dict(v) for v in votes.stake_pool_votes],
             "deposit": votes.deposit,
             "deposit_return_addr": votes.deposit_return_addr,
             "anchor": _to_cbor_hex(votes.anchor),
@@ -372,13 +369,9 @@ def _gov_action_votes_from_dict(value: Dict) -> GovActionVotes:
     from one whose committee votes were simply not written down.
     """
     return GovActionVotes(
-        committee_votes=[
-            _committee_vote_from_dict(v) for v in (value.get("committee_votes") or [])
-        ],
+        committee_votes=[_committee_vote_from_dict(v) for v in (value.get("committee_votes") or [])],
         drep_votes=[_drep_vote_from_dict(v) for v in (value.get("drep_votes") or [])],
-        stake_pool_votes=[
-            _stake_pool_vote_from_dict(v) for v in (value.get("stake_pool_votes") or [])
-        ],
+        stake_pool_votes=[_stake_pool_vote_from_dict(v) for v in (value.get("stake_pool_votes") or [])],
         deposit=_as_int(value.get("deposit")),
         deposit_return_addr=value.get("deposit_return_addr"),
         anchor=_from_cbor_hex(Anchor, value.get("anchor")),
@@ -399,12 +392,8 @@ def _committee_member_info_to_dict(member: CommitteeMemberInfo) -> Dict:
 def _committee_member_info_from_dict(value: Dict) -> CommitteeMemberInfo:
     """Decode a :class:`CommitteeMemberInfo` from the transfer file."""
     return CommitteeMemberInfo(
-        cold_credential=_from_cbor_hex(
-            CommitteeColdCredential, value.get("cold_credential")
-        ),
-        hot_credential=_from_cbor_hex(
-            CommitteeHotCredential, value.get("hot_credential")
-        ),
+        cold_credential=_from_cbor_hex(CommitteeColdCredential, value.get("cold_credential")),
+        hot_credential=_from_cbor_hex(CommitteeHotCredential, value.get("hot_credential")),
         expiration=_as_int(value.get("expiration")),
         status=_enum_from(CommitteeMemberStatus, value.get("status")),
     )
@@ -422,9 +411,7 @@ def _committee_state_from_dict(value: Dict) -> CommitteeStateInfo:
     """Decode a :class:`CommitteeStateInfo` from the transfer file."""
     threshold = value.get("threshold")
     return CommitteeStateInfo(
-        members=[
-            _committee_member_info_from_dict(m) for m in (value.get("members") or [])
-        ],
+        members=[_committee_member_info_from_dict(m) for m in (value.get("members") or [])],
         threshold=None if threshold is None else float(threshold),
     )
 
@@ -514,9 +501,7 @@ class OfflineTransferHistory(BaseModel):
     Offline transfer json file history property model class
     """
 
-    date: Optional[str] = field(
-        default=datetime.now(timezone.utc).strftime(DATE_FORMAT_2)
-    )
+    date: Optional[str] = field(default=datetime.now(UTC).strftime(DATE_FORMAT_2))
     action: Optional[str] = None
 
 
@@ -527,9 +512,7 @@ class OfflineTransferFile(BaseModel):
     """
 
     name: Optional[str] = None
-    date: Optional[str] = field(
-        default=datetime.now(timezone.utc).strftime(DATE_FORMAT_2)
-    )
+    date: Optional[str] = field(default=datetime.now(UTC).strftime(DATE_FORMAT_2))
     size: Optional[int] = None
     base64: Optional[bytes] = None
 
@@ -552,9 +535,7 @@ class OfflineTransferTransaction(BaseModel):
     """
 
     type: Optional[TransactionType] = None
-    date: Optional[str] = field(
-        default=datetime.now(timezone.utc).strftime(DATE_FORMAT_2)
-    )
+    date: Optional[str] = field(default=datetime.now(UTC).strftime(DATE_FORMAT_2))
     era: Optional[Era] = None
     stake_address: Optional[str] = field(
         default=None,
@@ -677,11 +658,7 @@ class OfflineTransfer(BaseModel):
             object.__setattr__(
                 self,
                 "stake_pools",
-                [
-                    pool
-                    for pool in (_pool_operator_from_id(p) for p in self.stake_pools)
-                    if pool is not None
-                ],
+                [pool for pool in (_pool_operator_from_id(p) for p in self.stake_pools) if pool is not None],
             )
 
         # if self.addresses is not None:
@@ -791,7 +768,7 @@ class OfflineTransfer(BaseModel):
             },
             "history": [
                 {
-                    "date": datetime.now(timezone.utc),
+                    "date": datetime.now(UTC),
                     "action": HistoryType.NEW.value,
                 }
             ],
@@ -817,8 +794,7 @@ class OfflineTransfer(BaseModel):
             check_file_exists(offline_transfer_file)
         except FileNotFoundError:
             raise FileNotFoundError(
-                f"Offline transfer file is not a file or does not exist: "
-                f"{offline_transfer_file.as_posix()}"
+                f"Offline transfer file is not a file or does not exist: {offline_transfer_file.as_posix()}"
             )
             # print(
             #     f"[yellow]Offline transfer file is not a file or does not exist: "

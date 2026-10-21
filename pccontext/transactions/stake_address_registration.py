@@ -49,8 +49,7 @@ def stake_address_registration(
             else ""
         )
         raise TransactionError(
-            f"Stake-Address: {str(stake_address)} is already registered on the chain!\n "
-            f"{delegation_info}"
+            f"Stake-Address: {str(stake_address)} is already registered on the chain!\n {delegation_info}"
         )
 
     builder = TransactionBuilder(context)

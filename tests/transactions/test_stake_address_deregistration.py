@@ -75,11 +75,6 @@ def test_stake_address_deregistration_success(deregistration_chain_context):
     address = Address.from_primitive(
         "addr1x8nz307k3sr60gu0e47cmajssy4fmld7u493a4xztjrll0aj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrswgxsta"
     )
-    transaction = stake_address_deregistration(
-        deregistration_chain_context, vk, address
-    )
+    transaction = stake_address_deregistration(deregistration_chain_context, vk, address)
     assert transaction.valid is True
-    assert (
-        transaction.transaction_body.certificates[0].stake_credential.credential
-        == vk.hash()
-    )
+    assert transaction.transaction_body.certificates[0].stake_credential.credential == vk.hash()

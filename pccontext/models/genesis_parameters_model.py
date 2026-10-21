@@ -64,19 +64,13 @@ class GenesisParameters(BaseModel, PyCardanoGenesisParameters):
     )
     max_kes_evolutions: Optional[int] = field(
         default=None,
-        metadata={
-            "aliases": ["max_kes_evolutions", "maxKESEvolutions", "maxkesrevolutions"]
-        },
+        metadata={"aliases": ["max_kes_evolutions", "maxKESEvolutions", "maxkesrevolutions"]},
     )
     max_lovelace_supply: Optional[int] = field(
         default=None,
-        metadata={
-            "aliases": ["max_lovelace_supply", "maxLovelaceSupply", "maxlovelacesupply"]
-        },
+        metadata={"aliases": ["max_lovelace_supply", "maxLovelaceSupply", "maxlovelacesupply"]},
     )
-    network_id: Optional[str] = field(
-        default=None, metadata={"aliases": ["network_id", "networkId", "networkid"]}
-    )
+    network_id: Optional[str] = field(default=None, metadata={"aliases": ["network_id", "networkId", "networkid"]})
     network_magic: Optional[int] = field(
         default=None,
         metadata={"aliases": ["network_magic", "networkMagic", "networkmagic"]},
@@ -89,7 +83,7 @@ class GenesisParameters(BaseModel, PyCardanoGenesisParameters):
         default=None,
         metadata={"aliases": ["security_param", "securityParam", "securityparam"]},
     )
-    slot_length: Optional[int] = field(
+    slot_length: Optional[Union[int, float]] = field(
         default=None, metadata={"aliases": ["slot_length", "slotLength", "slotlength"]}
     )
     slots_per_kes_period: Optional[int] = field(
@@ -147,26 +141,16 @@ class GenesisParameters(BaseModel, PyCardanoGenesisParameters):
             alonzo_genesis_file = config_file.parent / config_json["AlonzoGenesisFile"]
             byron_genesis_file = config_file.parent / config_json["ByronGenesisFile"]
             conway_genesis_file = config_file.parent / config_json["ConwayGenesisFile"]
-            shelley_genesis_file = (
-                config_file.parent / config_json["ShelleyGenesisFile"]
-            )
+            shelley_genesis_file = config_file.parent / config_json["ShelleyGenesisFile"]
 
         if not alonzo_genesis_file.exists() or not alonzo_genesis_file.is_file():
-            raise CardanoModelError(
-                f"Alonzo Genesis file not found: {alonzo_genesis_file}"
-            )
+            raise CardanoModelError(f"Alonzo Genesis file not found: {alonzo_genesis_file}")
         if not byron_genesis_file.exists() or not byron_genesis_file.is_file():
-            raise CardanoModelError(
-                f"Byron Genesis file not found: {byron_genesis_file}"
-            )
+            raise CardanoModelError(f"Byron Genesis file not found: {byron_genesis_file}")
         if not conway_genesis_file.exists() or not conway_genesis_file.is_file():
-            raise CardanoModelError(
-                f"Conway Genesis file not found: {conway_genesis_file}"
-            )
+            raise CardanoModelError(f"Conway Genesis file not found: {conway_genesis_file}")
         if not shelley_genesis_file.exists() or not shelley_genesis_file.is_file():
-            raise CardanoModelError(
-                f"Shelley Genesis file not found: {shelley_genesis_file}"
-            )
+            raise CardanoModelError(f"Shelley Genesis file not found: {shelley_genesis_file}")
 
         with open(alonzo_genesis_file, encoding="utf-8") as alonzo_file:
             alonzo_json = json.load(alonzo_file)
@@ -228,11 +212,11 @@ class GenesisParameters(BaseModel, PyCardanoGenesisParameters):
         Convert GenesisParameters to PyCardanoGenesisParameters
         :return: PyCardanoGenesisParameters
         """
-        return PyCardanoGenesisParameters(
+        # pycardano declares every field required, but genesis values a backend does not
+        # report stay None; pycardano accepts that, so pass the values through as they are.
+        fields: Dict[str, Any] = dict(
             active_slots_coefficient=(
-                Fraction(self.active_slots_coefficient)
-                if self.active_slots_coefficient
-                else None
+                Fraction(self.active_slots_coefficient) if self.active_slots_coefficient else None
             ),
             epoch_length=self.epoch_length,
             max_kes_evolutions=self.max_kes_evolutions,
@@ -242,9 +226,8 @@ class GenesisParameters(BaseModel, PyCardanoGenesisParameters):
             slot_length=self.slot_length,
             slots_per_kes_period=self.slots_per_kes_period,
             system_start=(
-                int(self.system_start.timestamp())
-                if isinstance(self.system_start, datetime)
-                else self.system_start
+                int(self.system_start.timestamp()) if isinstance(self.system_start, datetime) else self.system_start
             ),
             update_quorum=self.update_quorum,
         )
+        return PyCardanoGenesisParameters(**fields)

@@ -90,9 +90,7 @@ def _stub_costs(chain_context, payload):
 
 class TestCardanoCliChainContext:
     def test_protocol_param(self, chain_context, query_protocol_parameters_result):
-        expected_protocol_params = ProtocolParameters.from_json(
-            query_protocol_parameters_result
-        ).to_pycardano()
+        expected_protocol_params = ProtocolParameters.from_json(query_protocol_parameters_result).to_pycardano()
         assert chain_context.protocol_param == expected_protocol_params
 
     def test_genesis(self, chain_context, config_file):
@@ -131,9 +129,7 @@ class TestCardanoCliChainContext:
                     {
                         "constructor": 0,
                         "fields": [
-                            {
-                                "bytes": "2e11e7313e00ccd086cfc4f1c3ebed4962d31b481b6a153c23601c0f"
-                            },
+                            {"bytes": "2e11e7313e00ccd086cfc4f1c3ebed4962d31b481b6a153c23601c0f"},
                             {"bytes": "636861726c69335f6164615f6e6674"},
                         ],
                     },
@@ -141,29 +137,19 @@ class TestCardanoCliChainContext:
                     {
                         "constructor": 0,
                         "fields": [
-                            {
-                                "bytes": "8e51398904a5d3fc129fbf4f1589701de23c7824d5c90fdb9490e15a"
-                            },
+                            {"bytes": "8e51398904a5d3fc129fbf4f1589701de23c7824d5c90fdb9490e15a"},
                             {"bytes": "434841524c4933"},
                         ],
                     },
                     {
                         "constructor": 0,
                         "fields": [
-                            {
-                                "bytes": "d8d46a3e430fab5dc8c5a0a7fc82abbf4339a89034a8c804bb7e6012"
-                            },
+                            {"bytes": "d8d46a3e430fab5dc8c5a0a7fc82abbf4339a89034a8c804bb7e6012"},
                             {"bytes": "636861726c69335f6164615f6c71"},
                         ],
                     },
                     {"int": 997},
-                    {
-                        "list": [
-                            {
-                                "bytes": "4dd98a2ef34bc7ac3858bbcfdf94aaa116bb28ca7e01756140ba4d19"
-                            }
-                        ]
-                    },
+                    {"list": [{"bytes": "4dd98a2ef34bc7ac3858bbcfdf94aaa116bb28ca7e01756140ba4d19"}]},
                     {"int": 10000000000},
                 ],
             }
@@ -171,12 +157,8 @@ class TestCardanoCliChainContext:
 
         assert results[0].output.amount.multi_asset == MultiAsset.from_primitive(
             {
-                "2e11e7313e00ccd086cfc4f1c3ebed4962d31b481b6a153c23601c0f": {
-                    "636861726c69335f6164615f6e6674": 1
-                },
-                "8e51398904a5d3fc129fbf4f1589701de23c7824d5c90fdb9490e15a": {
-                    "434841524c4933": 1367726755
-                },
+                "2e11e7313e00ccd086cfc4f1c3ebed4962d31b481b6a153c23601c0f": {"636861726c69335f6164615f6e6674": 1},
+                "8e51398904a5d3fc129fbf4f1589701de23c7824d5c90fdb9490e15a": {"434841524c4933": 1367726755},
                 "d8d46a3e430fab5dc8c5a0a7fc82abbf4339a89034a8c804bb7e6012": {
                     "636861726c69335f6164615f6c71": 9223372035870126880
                 },
@@ -195,10 +177,7 @@ class TestCardanoCliChainContext:
     def test_submit_tx(self, chain_context):
         results = chain_context.submit_tx("testcborhexfromtransaction")
 
-        assert (
-            results
-            == "270be16fa17cdb3ef683bf2c28259c978d4b7088792074f177c8efda247e23f7"
-        )
+        assert results == "270be16fa17cdb3ef683bf2c28259c978d4b7088792074f177c8efda247e23f7"
 
     def test_epoch(self, chain_context):
         assert chain_context.epoch == 98
@@ -209,10 +188,7 @@ class TestCardanoCliChainContext:
         )
 
         assert len(stake_address_info) == 1
-        assert (
-            stake_address_info[0].address
-            == "stake_test1upyz3gk6mw5he20apnwfn96cn9rscgvmmsxc9r86dh0k66gswf59n"
-        )
+        assert stake_address_info[0].address == "stake_test1upyz3gk6mw5he20apnwfn96cn9rscgvmmsxc9r86dh0k66gswf59n"
         assert stake_address_info[0].delegation_deposit == 1000000000000
         assert stake_address_info[0].reward_account_balance == 1000000
         assert (
@@ -222,9 +198,7 @@ class TestCardanoCliChainContext:
         assert stake_address_info[0].vote_delegation == "always-abstain"
 
     def test_redeemer_keys_are_in_canonical_order(self):
-        cbor = _tx_with_redeemers(
-            (RedeemerTag.MINT, 1), (RedeemerTag.SPEND, 0), (RedeemerTag.SPEND, 2)
-        )
+        cbor = _tx_with_redeemers((RedeemerTag.MINT, 1), (RedeemerTag.SPEND, 0), (RedeemerTag.SPEND, 2))
 
         assert CardanoCliChainContext._redeemer_keys(cbor) == [
             "spend:0",
@@ -259,9 +233,7 @@ class TestCardanoCliChainContext:
             "mint:1": ExecutionUnits(22, 33),
         }
 
-        cost_command = next(
-            cmd for cmd in commands if "calculate-plutus-script-cost" in cmd
-        )
+        cost_command = next(cmd for cmd in commands if "calculate-plutus-script-cost" in cmd)
         assert cost_command[:4] == [
             "latest",
             "transaction",
@@ -307,9 +279,7 @@ class TestCardanoCliChainContext:
             ],
         )
 
-        assert chain_context.evaluate_tx_cbor(cbor) == {
-            "withdrawal:0": ExecutionUnits(1, 2)
-        }
+        assert chain_context.evaluate_tx_cbor(cbor) == {"withdrawal:0": ExecutionUnits(1, 2)}
 
     def test_evaluate_tx_cbor_without_redeemers_skips_the_cli(self, chain_context):
         commands = _stub_costs(chain_context, [])
@@ -319,9 +289,7 @@ class TestCardanoCliChainContext:
 
     def test_evaluate_tx_cbor_rejects_a_failed_script(self, chain_context):
         cbor = _tx_with_redeemers((RedeemerTag.SPEND, 0))
-        _stub_costs(
-            chain_context, [{"scriptHash": "aa" * 28, "error": "validation failed"}]
-        )
+        _stub_costs(chain_context, [{"scriptHash": "aa" * 28, "error": "validation failed"}])
 
         with pytest.raises(TransactionFailedException):
             chain_context.evaluate_tx_cbor(cbor)
@@ -360,9 +328,7 @@ class TestCardanoCliChainContext:
 
         def run(cmd):
             if "calculate-plutus-script-cost" in cmd:
-                raise CardanoCliError(
-                    "Invalid argument `calculate-plutus-script-cost'\n\nUsage: cardano-cli"
-                )
+                raise CardanoCliError("Invalid argument `calculate-plutus-script-cost'\n\nUsage: cardano-cli")
             return original(cmd)
 
         chain_context._run_command = run
@@ -379,9 +345,7 @@ class TestCardanoCliChainContext:
 
         def run(cmd):
             if "calculate-plutus-script-cost" in cmd:
-                raise CardanoCliError(
-                    "Invalid option `--socket-path'\n\nUsage: cardano-cli"
-                )
+                raise CardanoCliError("Invalid option `--socket-path'\n\nUsage: cardano-cli")
             return original(cmd)
 
         chain_context._run_command = run
@@ -567,18 +531,13 @@ class TestCardanoCliChainState:
 
         assert tip.slot == 41008115
         assert tip.block == 1460093
-        assert (
-            tip.hash
-            == "c1bda7b2975dd3bf9969a57d92528ba7d60383b6e1c4a37b68379c4f4330e790"
-        )
+        assert tip.hash == "c1bda7b2975dd3bf9969a57d92528ba7d60383b6e1c4a37b68379c4f4330e790"
         assert tip.epoch == 98
         assert tip.era == Era.BABBAGE
         assert tip.sync_progress == 100.0
 
     def test_utxo_resolves_a_live_input(self, chain_context):
-        tx_in = TransactionInput.from_primitive(
-            ["fbaa018740241abb935240051134914389c3f94647d8bd6c30cb32d3fdb799bf", 0]
-        )
+        tx_in = TransactionInput.from_primitive(["fbaa018740241abb935240051134914389c3f94647d8bd6c30cb32d3fdb799bf", 0])
         _stub_cli(
             chain_context,
             {
@@ -659,19 +618,14 @@ class TestCardanoCliStakePools:
         assert info.pool_params.vrf_keyhash.payload.hex() == VRF_HASH
         # Testnet key-hash reward accounts carry the 0xE0 header byte.
         assert info.pool_params.reward_account.payload.hex() == f"e0{OWNER_HASH}"
-        assert [owner.payload.hex() for owner in info.pool_params.pool_owners] == [
-            OWNER_HASH
-        ]
+        assert [owner.payload.hex() for owner in info.pool_params.pool_owners] == [OWNER_HASH]
         assert info.pool_params.relays is not None
         assert info.pool_params.relays[0].ipv4 == "1.2.3.4"
         assert info.pool_params.relays[0].port == 3001
         assert info.pool_params.relays[1].dns_name == "relay1.example.com"
         assert info.pool_params.pool_metadata is not None
         assert info.pool_params.pool_metadata.url == METADATA_URL
-        assert (
-            info.pool_params.pool_metadata.pool_metadata_hash.payload.hex()
-            == METADATA_HASH
-        )
+        assert info.pool_params.pool_metadata.pool_metadata_hash.payload.hex() == METADATA_HASH
 
         assert info.active_stake == 4900000000000
         assert info.active_size == Decimal(4900000000000) / Decimal(24900000000000000)
@@ -713,9 +667,7 @@ class TestCardanoCliStakePools:
         with pytest.raises(CardanoCLIError, match="not registered"):
             chain_context.stake_pool_info(POOL_ID)
 
-    def test_stake_pool_info_strict_verifies_the_metadata_hash(
-        self, chain_context, monkeypatch
-    ):
+    def test_stake_pool_info_strict_verifies_the_metadata_hash(self, chain_context, monkeypatch):
         fetched = []
 
         def fake_get(url, timeout=None):
@@ -738,9 +690,7 @@ class TestCardanoCliStakePools:
         assert info.pool_params is not None
         assert info.pool_params.pool_metadata is not None
 
-    def test_stake_pool_info_strict_rejects_a_hash_mismatch(
-        self, chain_context, monkeypatch
-    ):
+    def test_stake_pool_info_strict_rejects_a_hash_mismatch(self, chain_context, monkeypatch):
         monkeypatch.setattr(
             cardano_cli.requests,
             "get",
@@ -758,9 +708,7 @@ class TestCardanoCliStakePools:
         with pytest.raises(CardanoCLIError, match="registered on-chain"):
             chain_context.stake_pool_info(POOL_ID, strict=True)
 
-    def test_stake_pool_info_tolerates_metadata_problems_when_lenient(
-        self, chain_context, monkeypatch
-    ):
+    def test_stake_pool_info_tolerates_metadata_problems_when_lenient(self, chain_context, monkeypatch):
         def fail(url, timeout=None):
             raise RequestException("connection refused")
 
@@ -780,9 +728,7 @@ class TestCardanoCliStakePools:
         assert info.pool_params.pool_metadata is not None
         assert info.pool_params.pool_metadata.url == METADATA_URL
 
-    def test_stake_pool_info_strict_rejects_an_unreachable_url(
-        self, chain_context, monkeypatch
-    ):
+    def test_stake_pool_info_strict_rejects_an_unreachable_url(self, chain_context, monkeypatch):
         def fail(url, timeout=None):
             raise RequestException("connection refused")
 
@@ -839,9 +785,7 @@ class TestCardanoCliKesPeriodInfo:
             },
         )
 
-        assert (
-            chain_context.kes_period_info(op_cert="aabb").next_chain_op_cert_count == 8
-        )
+        assert chain_context.kes_period_info(op_cert="aabb").next_chain_op_cert_count == 8
 
     def test_kes_period_info_needs_an_operational_certificate(self, chain_context):
         with pytest.raises(CardanoCLIError, match="op_cert"):
@@ -923,9 +867,7 @@ class TestCardanoCliGovernance:
         command = next(cmd for cmd in commands if "drep-state" in cmd)
         assert command[2:4] == ["--drep-script-hash", DREP_SCRIPT_HASH]
 
-    def test_drep_info_reads_a_predefined_drep_from_the_distribution(
-        self, chain_context
-    ):
+    def test_drep_info_reads_a_predefined_drep_from_the_distribution(self, chain_context):
         _stub_cli(
             chain_context,
             {
@@ -1006,15 +948,11 @@ class TestCardanoCliGovernance:
         assert info.expires_after == 120
         assert info.status is None
         assert isinstance(info.gov_action, TreasuryWithdrawalsAction)
-        assert dict(info.gov_action.withdrawals) == {
-            bytes.fromhex(f"e0{WITHDRAWAL_HASH}"): 20000000
-        }
+        assert dict(info.gov_action.withdrawals) == {bytes.fromhex(f"e0{WITHDRAWAL_HASH}"): 20000000}
 
     def test_gov_action_info_reports_a_ratified_action(self, chain_context):
         gov_state = copy.deepcopy(GOV_STATE)
-        gov_state["nextRatifyState"]["enactedGovActions"] = [
-            {"actionId": {"txId": ACTION_TX_ID, "govActionIx": 1}}
-        ]
+        gov_state["nextRatifyState"]["enactedGovActions"] = [{"actionId": {"txId": ACTION_TX_ID, "govActionIx": 1}}]
         _stub_cli(chain_context, {"gov-state": gov_state})
 
         info = chain_context.gov_action_info(GOV_ACTION_ID)
@@ -1022,9 +960,7 @@ class TestCardanoCliGovernance:
         assert info.ratified_epoch == 98
         assert info.status == GovActionStatus.RATIFIED
 
-    def test_gov_action_info_reports_an_action_that_left_the_proposal_set(
-        self, chain_context
-    ):
+    def test_gov_action_info_reports_an_action_that_left_the_proposal_set(self, chain_context):
         _stub_cli(chain_context, {"gov-state": {"proposals": []}})
 
         info = chain_context.gov_action_info(GOV_ACTION_ID)
@@ -1041,9 +977,7 @@ class TestCardanoCliGovernance:
 
         assert votes.gov_action_id == GOV_ACTION_ID
         assert votes.deposit == 100000000000
-        assert votes.deposit_return_addr == str(
-            Address.from_primitive(bytes.fromhex(f"e0{RETURN_ADDR_HASH}"))
-        )
+        assert votes.deposit_return_addr == str(Address.from_primitive(bytes.fromhex(f"e0{RETURN_ADDR_HASH}")))
         assert votes.anchor is not None
         assert votes.anchor.url == "https://anchor.test"
 
@@ -1083,9 +1017,7 @@ class TestCardanoCliGovernance:
 
         assert chain_context.gov_actions_all() == []
 
-    def test_gov_action_votes_dates_an_expiry_the_node_has_not_processed(
-        self, chain_context
-    ):
+    def test_gov_action_votes_dates_an_expiry_the_node_has_not_processed(self, chain_context):
         gov_state = copy.deepcopy(GOV_STATE)
         gov_state["proposals"][0]["expiresAfter"] = 97
         _stub_cli(chain_context, {"gov-state": gov_state})
@@ -1135,9 +1067,7 @@ class TestCardanoCliGovernance:
         )
         assert isinstance(constitution, NewConstitution)
         assert constitution.constitution[0].url == "https://constitution.test"
-        assert constitution.constitution[1] == ScriptHash(
-            bytes.fromhex(COLD_SCRIPT_HASH)
-        )
+        assert constitution.constitution[1] == ScriptHash(bytes.fromhex(COLD_SCRIPT_HASH))
 
         parameter_change = parse(
             {
@@ -1187,9 +1117,7 @@ class TestCardanoCliGovernance:
         info = chain_context.committee_member_info(cold=cold)
 
         assert info.cold_credential == cold
-        assert info.hot_credential == CommitteeHotCredential(
-            VerificationKeyHash(bytes.fromhex(HOT_KEY_HASH))
-        )
+        assert info.hot_credential == CommitteeHotCredential(VerificationKeyHash(bytes.fromhex(HOT_KEY_HASH)))
         assert info.expiration == 653
         assert info.status == CommitteeMemberStatus.ACTIVE
 
@@ -1202,9 +1130,7 @@ class TestCardanoCliGovernance:
 
         info = chain_context.committee_member_info(hot=hot)
 
-        assert info.cold_credential == CommitteeColdCredential(
-            ScriptHash(bytes.fromhex(COLD_SCRIPT_HASH))
-        )
+        assert info.cold_credential == CommitteeColdCredential(ScriptHash(bytes.fromhex(COLD_SCRIPT_HASH)))
         assert info.hot_credential == hot
 
         command = next(cmd for cmd in commands if "committee-state" in cmd)
@@ -1219,9 +1145,7 @@ class TestCardanoCliGovernance:
 
         with pytest.raises(CardanoCLIError, match="No committee member matches"):
             chain_context.committee_member_info(
-                cold=CommitteeColdCredential(
-                    ScriptHash(bytes.fromhex(COLD_SCRIPT_HASH))
-                )
+                cold=CommitteeColdCredential(ScriptHash(bytes.fromhex(COLD_SCRIPT_HASH)))
             )
 
     def test_committee_state(self, chain_context):
@@ -1232,20 +1156,14 @@ class TestCardanoCliGovernance:
         assert state.threshold == pytest.approx(2 / 3)
         assert len(state.members) == 1
         member = state.members[0]
-        assert member.cold_credential == CommitteeColdCredential(
-            ScriptHash(bytes.fromhex(COLD_SCRIPT_HASH))
-        )
-        assert member.hot_credential == CommitteeHotCredential(
-            VerificationKeyHash(bytes.fromhex(HOT_KEY_HASH))
-        )
+        assert member.cold_credential == CommitteeColdCredential(ScriptHash(bytes.fromhex(COLD_SCRIPT_HASH)))
+        assert member.hot_credential == CommitteeHotCredential(VerificationKeyHash(bytes.fromhex(HOT_KEY_HASH)))
         assert member.expiration == 653
         assert member.status == CommitteeMemberStatus.ACTIVE
 
     def test_committee_state_reports_an_unauthorized_member(self, chain_context):
         payload = copy.deepcopy(COMMITTEE_STATE)
-        payload["committee"][f"scriptHash-{COLD_SCRIPT_HASH}"]["hotCredsAuthStatus"] = {
-            "tag": "MemberNotAuthorized"
-        }
+        payload["committee"][f"scriptHash-{COLD_SCRIPT_HASH}"]["hotCredsAuthStatus"] = {"tag": "MemberNotAuthorized"}
         _stub_cli(chain_context, {"committee-state": payload})
 
         state = chain_context.committee_state()
@@ -1269,9 +1187,7 @@ class TestReferenceScriptWrapping:
         """cardano-cli 11: the cborHex already is the script."""
         from pccontext.backend.cardano_cli import CardanoCliChainContext
 
-        script = CardanoCliChainContext._get_script(
-            {"script": {"type": "PlutusScriptV3", "cborHex": self.SINGLE}}
-        )
+        script = CardanoCliChainContext._get_script({"script": {"type": "PlutusScriptV3", "cborHex": self.SINGLE}})
 
         assert bytes(script).hex() == self.SINGLE
 
@@ -1284,9 +1200,7 @@ class TestReferenceScriptWrapping:
         double = cbor2.dumps(bytes.fromhex(self.SINGLE)).hex()
         assert double != self.SINGLE
 
-        script = CardanoCliChainContext._get_script(
-            {"script": {"type": "PlutusScriptV3", "cborHex": double}}
-        )
+        script = CardanoCliChainContext._get_script({"script": {"type": "PlutusScriptV3", "cborHex": double}})
 
         assert bytes(script).hex() == self.SINGLE
 
@@ -1298,11 +1212,7 @@ class TestReferenceScriptWrapping:
         from pccontext.backend.cardano_cli import CardanoCliChainContext
 
         double = cbor2.dumps(bytes.fromhex(self.SINGLE)).hex()
-        a = CardanoCliChainContext._get_script(
-            {"script": {"type": "PlutusScriptV3", "cborHex": self.SINGLE}}
-        )
-        b = CardanoCliChainContext._get_script(
-            {"script": {"type": "PlutusScriptV3", "cborHex": double}}
-        )
+        a = CardanoCliChainContext._get_script({"script": {"type": "PlutusScriptV3", "cborHex": self.SINGLE}})
+        b = CardanoCliChainContext._get_script({"script": {"type": "PlutusScriptV3", "cborHex": double}})
 
         assert plutus_script_hash(a) == plutus_script_hash(b)

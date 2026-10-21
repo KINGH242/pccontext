@@ -2063,13 +2063,15 @@ tests = ["hypothesis (>=3.27.0)", "pytest (>=7.4.0)", "pytest-cov (>=2.10.1)", "
 
 [[package]]
 name = "pyogmios"
-version = "0.7.4"
+version = "1.0.0"
 description = "Python client for Ogmios, the WebSocket JSON-RPC bridge to cardano-node"
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
-files = []
-develop = true
+files = [
+    {file = "pyogmios-1.0.0-py3-none-any.whl", hash = "sha256:0816c72d637afd6ae1e4eda6ba6064bed1db185aff0b5b1817b2bee24faa2623"},
+    {file = "pyogmios-1.0.0.tar.gz", hash = "sha256:28fcc063e42003cc3dbde0ac658cf84aa713e006bf71e3eb1209c587f9804fe2"},
+]
 
 [package.dependencies]
 httpx = ">=0.27"
@@ -2079,10 +2081,6 @@ websockets = ">=15"
 
 [package.extras]
 speedups = ["orjson (>=3.10)"]
-
-[package.source]
-type = "directory"
-url = "../../AGL/pyogmios"
 
 [[package]]
 name = "pyreadline3"
@@ -2686,4 +2684,4 @@ python-dateutil = ">=2.8.0,<3.0.0"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4.0"
-content-hash = "542c9a0ee85c6499477356cd248ab7ae36fedced5370a4cae503401b211febf2"
+content-hash = "83b4c8aaa3730ce4138bc73a85f1098cdd50cbfcd93cb841979dd7e8e7b7dc3f"

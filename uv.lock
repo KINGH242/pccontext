@@ -826,7 +826,7 @@ requires-dist = [
     { name = "cbor2", specifier = ">=5.9.0,<6.0.0" },
     { name = "koios-python", specifier = ">=2.0.0,<3.0.0" },
     { name = "pycardano", specifier = ">=0.19.0,<0.20.0" },
-    { name = "pyogmios", editable = "/Users/hadderley/Projects/AGL/pyogmios" },
+    { name = "pyogmios", specifier = ">=1.0,<2.0" },
     { name = "requests", specifier = ">=2.32.4,<3.0.0" },
     { name = "yaci-client", specifier = ">=1.0,<2.0" },
 ]
@@ -1053,53 +1053,17 @@ wheels = [
 
 [[package]]
 name = "pyogmios"
-version = "0.7.4"
-source = { editable = "/Users/hadderley/Projects/AGL/pyogmios" }
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "typing-extensions" },
     { name = "websockets" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "orjson", marker = "extra == 'speedups'", specifier = ">=3.10" },
-    { name = "pydantic", specifier = ">=2.11" },
-    { name = "typing-extensions", specifier = ">=4.12" },
-    { name = "websockets", specifier = ">=15" },
-]
-provides-extras = ["speedups"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "cbor2", specifier = ">=5.6" },
-    { name = "commitizen", specifier = ">=4.8" },
-    { name = "datamodel-code-generator", specifier = ">=0.34" },
-    { name = "jsonschema", specifier = ">=4.25" },
-    { name = "pre-commit", specifier = ">=4.3" },
-    { name = "pytest", specifier = ">=8.4" },
-    { name = "pytest-asyncio", specifier = ">=1.2" },
-    { name = "pytest-cov", specifier = ">=7" },
-    { name = "ruff", specifier = ">=0.14" },
-    { name = "ty", specifier = ">=0.0.90" },
-]
-docs = [
-    { name = "mike", specifier = ">=2.1" },
-    { name = "mkdocs-material", specifier = ">=9.6" },
-    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.30" },
-]
-lint = [
-    { name = "ruff", specifier = ">=0.14" },
-    { name = "ty", specifier = ">=0.0.90" },
-]
-test = [
-    { name = "cbor2", specifier = ">=5.6" },
-    { name = "jsonschema", specifier = ">=4.25" },
-    { name = "pytest", specifier = ">=8.4" },
-    { name = "pytest-asyncio", specifier = ">=1.2" },
-    { name = "pytest-cov", specifier = ">=7" },
+sdist = { url = "https://files.pythonhosted.org/packages/10/c5/cb9eff5ceabe29aea2e77c358cc2f82a61ac75e06b0db8c868af9be6f56a/pyogmios-1.0.0.tar.gz", hash = "sha256:28fcc063e42003cc3dbde0ac658cf84aa713e006bf71e3eb1209c587f9804fe2", size = 65990, upload-time = "2026-10-21T11:17:44.543Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/89/1a/c4f30fc23666e8020afd5b2ed3379a85d94a238802eb92b1b83d35dfc5fb/pyogmios-1.0.0-py3-none-any.whl", hash = "sha256:0816c72d637afd6ae1e4eda6ba6064bed1db185aff0b5b1817b2bee24faa2623", size = 71894, upload-time = "2026-10-21T11:17:43.283Z" },
 ]
 
 [[package]]

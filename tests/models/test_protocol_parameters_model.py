@@ -326,7 +326,7 @@ def test_from_json_ogmios(ogmios_protocol_parameters):
         ogmios_protocol_parameters["maxExecutionUnitsPerTransaction"]["cpu"]
     )
     assert protocol_params.max_reference_scripts_size == int(
-        ogmios_protocol_parameters["maxReferenceScriptsSize"]["bytes"]
+        ogmios_protocol_parameters["maxReferenceScriptsSizePerTransaction"]["bytes"]
     )
     assert protocol_params.max_tx_size == int(
         ogmios_protocol_parameters["maxTransactionSize"]["bytes"]

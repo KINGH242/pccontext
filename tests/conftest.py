@@ -7,8 +7,6 @@ from unittest.mock import patch
 
 import pytest
 from faker import Faker
-from ogmios import Client
-from ogmios.datatypes import EraSummary
 from pycardano.crypto.bech32 import CHARSET
 
 from pccontext import (
@@ -2550,7 +2548,8 @@ def ogmios_protocol_parameters():
         "maxCollateralInputs": 3,
         "maxExecutionUnitsPerBlock": {"cpu": 20000000000, "memory": 62000000},
         "maxExecutionUnitsPerTransaction": {"cpu": 10000000000, "memory": 14000000},
-        "maxReferenceScriptsSize": {"bytes": 204800},
+        "maxReferenceScriptsSizePerBlock": {"bytes": 1048576},
+        "maxReferenceScriptsSizePerTransaction": {"bytes": 204800},
         "maxTransactionSize": {"bytes": 16384},
         "maxValueSize": {"bytes": 5000},
         "minFeeCoefficient": 44,
@@ -3172,6 +3171,7 @@ def ogmios_protocol_parameters():
             },
             "hardForkInitiation": "51/100",
             "noConfidence": "51/100",
+            "protocolParametersUpdate": {"security": "51/100"},
         },
         "treasuryExpansion": "1/5",
         "version": {"major": 9, "minor": 0},
@@ -4011,12 +4011,6 @@ def offline_transfer_file(fake_offline_transfer):
 
 
 @pytest.fixture
-def client():
-    with Client() as client:
-        yield client
-
-
-@pytest.fixture
 def ogmios_chain_context():
     yield OgmiosChainContext("localhost", 1337)
 
@@ -4693,25 +4687,6 @@ def yaci_utxos():
             "block_number": -1,
             "block_time": 1729217647,
         }
-    ]
-
-
-@pytest.fixture
-def ogmios_era_summary():
-    fake = Faker()
-    return [
-        EraSummary(
-            start_time=fake.pyint(min_value=1_000_000, max_value=1_000_000_000),
-            start_slot=fake.pyint(min_value=1_000_000, max_value=1_000_000_000),
-            start_epoch=fake.pyint(min_value=1_000_000, max_value=1_000_000_000),
-            end_time=fake.pyint(min_value=1_000_000, max_value=1_000_000_000),
-            end_slot=fake.pyint(min_value=1_000_000, max_value=1_000_000_000),
-            end_epoch=fake.pyint(min_value=100, max_value=999),
-            epoch_length=fake.pyint(min_value=1_000_000, max_value=1_000_000_000),
-            slot_length=fake.pyint(min_value=1_000_000, max_value=1_000_000_000),
-            safe_zone=fake.pyint(min_value=1_000_000, max_value=1_000_000_000),
-        )
-        for _ in range(7)
     ]
 
 

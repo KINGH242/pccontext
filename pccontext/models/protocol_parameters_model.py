@@ -468,6 +468,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
                 "max_reference_scripts_size",
                 "maxReferenceScriptsSize",
                 "maximum_reference_scripts_size",
+                "maxReferenceScriptsSizePerTransaction",
             ]
         },
     )

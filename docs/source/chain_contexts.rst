@@ -124,8 +124,10 @@ Koios has no PyCardano equivalent.
 Ogmios
 ------
 
-Talks to an `Ogmios <https://ogmios.dev/>`_ server (**v6**) in front of your own
-Cardano node.
+Talks to an `Ogmios <https://ogmios.dev/>`_ server (**v7**) in front of your own
+Cardano node, through the `pyogmios <https://github.com/Kingpin-Apps/pyogmios>`_
+client. Every query shares one WebSocket connection, opened on first use;
+``close()`` it, or use the context in a ``with`` block, when you are done.
 
 .. code-block:: python
 
@@ -146,10 +148,25 @@ For a secure connection and explicit network:
        network=Network.MAINNET,
    )
 
+For hosted Ogmios that needs an API key, pass a configured pyogmios client:
+
+.. code-block:: python
+
+   import pyogmios
+
+   context = OgmiosChainContext(
+       client=pyogmios.Client(
+           "wss://ogmios.example.com", headers={"dmtr-api-key": "..."}
+       ),
+   )
+
+Errors Ogmios reports are raised as pyogmios' typed exceptions, so a rejected
+submission raises, for example, ``pyogmios.errors.MissingSignatoriesError``.
+
 .. note::
 
-   This context is v6-only. For Ogmios v5, use PyCardano's
-   ``OgmiosV5ChainContext``.
+   This context is v7-only. For Ogmios v6 or v5, use PyCardano's
+   ``OgmiosV6ChainContext`` or ``OgmiosV5ChainContext``.
 
 Results are cached to avoid hammering the node. ``refetch_chain_tip_interval``
 controls how often the chain tip is re-read (it defaults to roughly half the
@@ -478,11 +495,8 @@ fifteen. Kupo delegates everything to the context it wraps, so its row is
 whatever that backend supports — including that backend's
 :class:`NotImplementedError`.
 
-Ogmios answers all fifteen as well, though three of its queries go out as
-hand-built JSON-RPC: the Python client has no binding for
-``operationalCertificates``, ``delegateRepresentatives`` or
-``governanceProposals``. Two limits follow from the protocol rather than the
-client — it cannot see a local operational certificate file, so the on-disk KES
+Ogmios answers all fifteen as well. Two limits follow from the protocol rather
+than the client — it cannot see a local operational certificate file, so the on-disk KES
 counters stay unset, and ``governanceProposals`` returns only *live* proposals,
 so a resolved action is absent rather than annotated and ``status`` is always
 ``None``.

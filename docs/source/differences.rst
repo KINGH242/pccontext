@@ -21,9 +21,12 @@ At a glance
    * - Blockfrost
      - ``BlockFrostChainContext``
      - ``BlockFrostChainContext``
+   * - Ogmios (v7)
+     - *not provided*
+     - ``OgmiosChainContext``
    * - Ogmios (v6)
      - ``OgmiosV6ChainContext``
-     - ``OgmiosChainContext``
+     - *not provided*
    * - Ogmios (v5)
      - ``OgmiosV5ChainContext``
      - *not provided*
@@ -58,7 +61,7 @@ At a glance
 
    Note also that ``OgmiosChainContext`` means different things in each package:
    in PyCardano it is an alias for the v6 context, and in ``pccontext`` it is the
-   only Ogmios context there is.
+   only Ogmios context there is, for v7.
 
 The interface is much wider
 ---------------------------
@@ -184,8 +187,9 @@ Plus transaction-plumbing helpers that work on any context: ``sign_transaction``
 What PyCardano has that this library does not
 ---------------------------------------------
 
-* **Ogmios v5.** ``pccontext``'s Ogmios context targets v6 only. Stay on
-  PyCardano's ``OgmiosV5ChainContext`` if you run an older Ogmios.
+* **Ogmios v5 and v6.** ``pccontext``'s Ogmios context targets v7 only. Stay on
+  PyCardano's ``OgmiosV6ChainContext`` or ``OgmiosV5ChainContext`` if you run an
+  older Ogmios.
 * **A pre-composed Kupo + Ogmios context.** PyCardano offers
   ``KupoOgmiosV6ChainContext`` as a single class. Here you compose it yourself,
   which takes one extra line:

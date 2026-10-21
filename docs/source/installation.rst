@@ -1,7 +1,7 @@
 Installation
 ============
 
-``pccontext`` requires Python 3.10 or newer.
+``pccontext`` requires Python 3.11 or newer.
 
 .. code-block:: bash
 
@@ -33,7 +33,7 @@ default install — but most contexts talk to something that you have to supply.
    * - :class:`~pccontext.backend.koios.KoiosChainContext`
      - Nothing. An API key raises the rate limit but is optional.
    * - :class:`~pccontext.backend.ogmios.OgmiosChainContext`
-     - A running Ogmios server (v6) in front of a Cardano node.
+     - A running Ogmios server (v7) in front of a Cardano node.
    * - :class:`~pccontext.backend.kupo.KupoChainContextExtension`
      - A running Kupo instance, plus another context to wrap.
    * - :class:`~pccontext.backend.cardano_cli.CardanoCliChainContext`

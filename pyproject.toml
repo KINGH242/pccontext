@@ -8,13 +8,12 @@ authors = [
     { name = "Hareem Adderley", email = "hadderley@kingpinapps.com" },
 ]
 keywords = ["python", "cardano", "blockchain", "crypto"]
-requires-python = ">=3.10,<4.0"
+requires-python = ">=3.11,<4.0"
 classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -24,7 +23,10 @@ dependencies = [
     "koios-python>=2.0.0,<3.0.0",
     "requests>=2.32.4,<3.0.0",
     "cachetools>=5.5.2,<6.0.0",
-    "ogmios>=1.4.2,<2.0.0",
+    # The Ogmios v7 client behind OgmiosChainContext. Not on PyPI yet: resolved from
+    # the local checkout below until it is released, then this becomes
+    # "pyogmios>=1.0,<2.0" and both path sources are removed.
+    "pyogmios>=0.7.4",
     "pycardano>=0.19.0,<0.20.0",
     # Pinned below 6.0.0: pycardano's cbor2pure shim is incompatible with cbor2 6.x.
     # Floor of 5.9.0 addresses GHSA-3c37-wwvx-h642.
@@ -48,6 +50,15 @@ documentation = "https://pccontext.readthedocs.io/en/latest/"
 [tool.poetry.dependencies]
 koios-python = { git = "https://github.com/KINGH242/koios-python.git", branch = "feat/governance-api" }
 blockfrost-python = { git = "https://github.com/KINGH242/blockfrost-python.git", branch = "feat/governance-committee" }
+# Temporary: pyogmios (branch v7) is not on PyPI yet. Switch to "pyogmios>=1.0" from
+# PyPI once it is released and remove this and the [tool.uv.sources] entry below.
+pyogmios = { path = "/Users/hadderley/Projects/AGL/pyogmios", develop = true }
+
+
+# Temporary, as above: resolve pyogmios from the local v7 checkout until
+# "pyogmios>=1.0" is on PyPI.
+[tool.uv.sources]
+pyogmios = { path = "/Users/hadderley/Projects/AGL/pyogmios", editable = true }
 
 
 [tool.poetry.group.dev.dependencies]
@@ -124,5 +135,5 @@ skip = ["pccontext/models/__init__.py"]
 [tool.mypy]
 ignore_missing_imports = true
 disable_error_code = ["str-bytes-safe"]
-python_version = "3.10"
+python_version = "3.11"
 

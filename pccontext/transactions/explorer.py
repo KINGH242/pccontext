@@ -8,9 +8,21 @@ from abc import ABCMeta
 from dataclasses import dataclass
 from enum import Enum
 
-from pycardano import Address, PoolOperator, TransactionId
+from pycardano import Address, PoolOperator, ScriptHash, TransactionId, VerificationKeyHash
 
 from pccontext import Network, UnsupportedNetworkError
+
+
+def _stake_credential_hex(address: Address) -> str:
+    """The hex of an address's stake credential, for explorers that key accounts by it.
+
+    Raises:
+        ValueError: If the address has no stake key or script (an enterprise or pointer address).
+    """
+    staking_part = address.staking_part
+    if not isinstance(staking_part, (VerificationKeyHash, ScriptHash)):
+        raise ValueError(f"Address has no stake credential: {address}")
+    return staking_part.payload.hex()
 
 
 class BlockchainExplorerProtocol(metaclass=ABCMeta):
@@ -162,7 +174,7 @@ class AdaStat(BlockchainExplorerProtocol):
         :return: URL string for viewing the account on AdaStat
         """
         if network is Network.MAINNET:
-            return f"{self._network_urls.mainnet}/accounts/{address.staking_part.payload.hex()}"
+            return f"{self._network_urls.mainnet}/accounts/{_stake_credential_hex(address)}"
         raise UnsupportedNetworkError(network.name)
 
     def view_address(self, address: Address, network: Network) -> str:
@@ -449,7 +461,7 @@ class PoolTool(BlockchainExplorerProtocol):
         :return: URL string for viewing the account on PoolTool
         """
         if network is Network.MAINNET:
-            return f"{self._network_urls.mainnet}/address/{address.staking_part.payload.hex()}"
+            return f"{self._network_urls.mainnet}/address/{_stake_credential_hex(address)}"
         raise UnsupportedNetworkError(network.name)
 
     def view_block(self, block_id: str, network: Network) -> str:

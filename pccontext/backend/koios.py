@@ -200,7 +200,7 @@ class KoiosChainContext(ChainContext):
         else:
             return NativeScript.from_dict(reference_script["value"])
 
-    def _utxos(self, address: str) -> List[Union[UTxO, None]]:
+    def _utxos(self, address: str) -> List[UTxO]:
         utxos: List[UTxO] = []
 
         try:
@@ -476,10 +476,7 @@ class KoiosChainContext(ChainContext):
                 cost=self._as_int(result.get("fixed_cost")) or 0,
                 margin=Fraction(str(result.get("margin") or 0)).limit_denominator(),
                 reward_account=RewardAccountHash(bytes(Address.decode(result["reward_addr"]).to_primitive())),
-                pool_owners=[
-                    VerificationKeyHash(bytes(Address.decode(owner).staking_part.payload))
-                    for owner in (result.get("owners") or [])
-                ],
+                pool_owners=[self._pool_owner(owner) for owner in (result.get("owners") or [])],
                 relays=[self._relay(r) for r in (result.get("relays") or [])],
                 pool_metadata=pool_metadata,
             )
@@ -497,6 +494,14 @@ class KoiosChainContext(ChainContext):
             status=self._pool_status(result),
             retiring_epoch=self._as_int(result.get("retiring_epoch")),
         )
+
+    @staticmethod
+    def _pool_owner(owner: str) -> VerificationKeyHash:
+        """Map one registered pool owner, a bech32 stake address, onto its staking key hash."""
+        staking_part = Address.decode(owner).staking_part
+        if not isinstance(staking_part, VerificationKeyHash):
+            raise ValueError(f"Pool owner is not a key-hash stake address: {owner}")
+        return staking_part
 
     @staticmethod
     def _relay(relay: JsonDict) -> Relay:

@@ -562,3 +562,11 @@ class TestPoolTool:
         """Test that view_transaction raises NotImplementedError"""
         with pytest.raises(NotImplementedError, match="view_transaction not implemented"):
             explorer.view_transaction(transaction_id, Network.MAINNET)
+
+
+def test_view_account_needs_a_stake_credential():
+    """An enterprise address has no stake credential to key an account page by."""
+    enterprise = Address.from_primitive("addr1vx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzers66hrl8")
+
+    with pytest.raises(ValueError, match="no stake credential"):
+        AdaStat().view_account(enterprise, Network.MAINNET)

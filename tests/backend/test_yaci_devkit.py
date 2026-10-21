@@ -775,3 +775,32 @@ class TestClientIsReusable:
 
         source = inspect.getsource(yaci_devkit)
         assert "with self.api as" not in source
+
+
+from pycardano.network import Network as PyCardanoNetwork  # noqa: E402
+
+
+class TestYaciDevkitScripts:
+    def test_native_script_json_is_unwrapped_from_the_generated_json_node(self, yaci_devkit_chain_context):
+        from pycardano import ScriptPubkey
+        from yaci_client.api.script_service import get_script_by_hash, get_script_json_by_hash
+        from yaci_client.models import JsonNode, ScriptDto, ScriptJsonDto
+
+        key_hash = "32829603ccd47f947389960a0736b1c7ed63015d7040dc4f7801601e"
+        script_json = ScriptJsonDto(json=JsonNode.from_dict({"type": "sig", "keyHash": key_hash}))
+        with (
+            patch.object(get_script_by_hash, "sync", return_value=ScriptDto(script_hash="00", type="timelock")),
+            patch.object(get_script_json_by_hash, "sync", return_value=script_json),
+        ):
+            script = yaci_devkit_chain_context._get_script("00")
+
+        assert script == ScriptPubkey(VerificationKeyHash(bytes.fromhex(key_hash)))
+
+    def test_pool_owner_accepts_a_key_hash_stake_address(self):
+        owner = Address(staking_part=VerificationKeyHash(b"\x01" * 28), network=PyCardanoNetwork.TESTNET)
+        assert YaciDevkitChainContext._pool_owner(str(owner)) == VerificationKeyHash(b"\x01" * 28)
+
+    def test_pool_owner_rejects_a_script_stake_address(self):
+        owner = Address(staking_part=ScriptHash(b"\x01" * 28), network=PyCardanoNetwork.TESTNET)
+        with pytest.raises(ValueError, match="not a key-hash stake address"):
+            YaciDevkitChainContext._pool_owner(str(owner))

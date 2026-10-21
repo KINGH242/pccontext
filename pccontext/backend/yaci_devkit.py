@@ -99,6 +99,7 @@ from yaci_client.models import (
     DRepRegistrationType,
     EpochNo,
     GovActionProposal,
+    JsonNode,
     PoolRegistration,
     PoolRetirement,
     ProtocolParamsDto,
@@ -109,7 +110,7 @@ from yaci_client.models import (
     VotingProcedure,
     VotingProcedureVoterType,
 )
-from yaci_client.types import Unset
+from yaci_client.types import UNSET, Unset
 
 from pccontext.backend import ChainContext
 from pccontext.enums import DRepStatus, Era, PoolStatus
@@ -375,7 +376,8 @@ class YaciDevkitChainContext(ChainContext):
                 script_json: Optional[ScriptJsonDto] = get_script_json_by_hash.sync(
                     script_hash=script_hash, client=client
                 )
-            return NativeScript.from_dict(script_json.json if script_json else {})
+            native_json = script_json.json if script_json else UNSET
+            return NativeScript.from_dict(native_json.to_dict() if isinstance(native_json, JsonNode) else {})
 
     def _utxos(self, address: str) -> List[UTxO]:
         """Get all UTxOs associated with an address with Kupo.
@@ -870,8 +872,10 @@ class YaciDevkitChainContext(ChainContext):
         address here too so a differently configured store still resolves.
         """
         if owner.startswith("stake"):
-            payload = Address.decode(owner).staking_part
-            return VerificationKeyHash(bytes(payload.payload))  # type: ignore[union-attr]
+            staking_part = Address.decode(owner).staking_part
+            if not isinstance(staking_part, VerificationKeyHash):
+                raise ValueError(f"Pool owner is not a key-hash stake address: {owner}")
+            return staking_part
         return VerificationKeyHash(bytes.fromhex(owner))
 
     @staticmethod

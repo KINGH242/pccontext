@@ -100,3 +100,8 @@ def test_to_json(blockfrost_get_genesis_json):
         sort_keys=True,
     )
     assert result == expected
+
+
+def test_slot_length_strings_keep_whole_seconds_whole():
+    assert GenesisParameters.from_dict({"slot_length": "1"}).slot_length == 1
+    assert GenesisParameters.from_dict({"slot_length": "0.2"}).slot_length == 0.2

@@ -83,7 +83,9 @@ class GenesisParameters(BaseModel, PyCardanoGenesisParameters):
         default=None,
         metadata={"aliases": ["security_param", "securityParam", "securityparam"]},
     )
-    slot_length: Optional[int] = field(default=None, metadata={"aliases": ["slot_length", "slotLength", "slotlength"]})
+    slot_length: Optional[Union[int, float]] = field(
+        default=None, metadata={"aliases": ["slot_length", "slotLength", "slotlength"]}
+    )
     slots_per_kes_period: Optional[int] = field(
         default=None,
         metadata={
@@ -210,7 +212,9 @@ class GenesisParameters(BaseModel, PyCardanoGenesisParameters):
         Convert GenesisParameters to PyCardanoGenesisParameters
         :return: PyCardanoGenesisParameters
         """
-        return PyCardanoGenesisParameters(
+        # pycardano declares every field required, but genesis values a backend does not
+        # report stay None; pycardano accepts that, so pass the values through as they are.
+        fields: Dict[str, Any] = dict(
             active_slots_coefficient=(
                 Fraction(self.active_slots_coefficient) if self.active_slots_coefficient else None
             ),
@@ -226,3 +230,4 @@ class GenesisParameters(BaseModel, PyCardanoGenesisParameters):
             ),
             update_quorum=self.update_quorum,
         )
+        return PyCardanoGenesisParameters(**fields)

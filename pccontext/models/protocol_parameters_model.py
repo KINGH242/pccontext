@@ -173,8 +173,12 @@ class DRepVotingThresholds(BaseModel):
 
 @dataclass(frozen=True)
 class ExecutionUnitPrices(BaseModel):
-    price_memory: Optional[float] = field(default=None, metadata={"aliases": ["price_memory", "priceMemory", "memory"]})
-    price_steps: Optional[float] = field(default=None, metadata={"aliases": ["price_steps", "priceSteps", "cpu"]})
+    price_memory: Optional[Union[float, Fraction]] = field(
+        default=None, metadata={"aliases": ["price_memory", "priceMemory", "memory"]}
+    )
+    price_steps: Optional[Union[float, Fraction]] = field(
+        default=None, metadata={"aliases": ["price_steps", "priceSteps", "cpu"]}
+    )
 
 
 @dataclass(frozen=True)
@@ -527,7 +531,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
             ]
         },
     )
-    monetary_expansion: Optional[float] = field(
+    monetary_expansion: Optional[Union[float, Fraction]] = field(
         default=None,
         metadata={
             "aliases": [
@@ -538,7 +542,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
             ]
         },
     )
-    pool_influence: Optional[float] = field(
+    pool_influence: Optional[Union[float, Fraction]] = field(
         default=None,
         metadata={
             "aliases": [
@@ -642,7 +646,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
             ]
         },
     )
-    treasury_expansion: Optional[float] = field(
+    treasury_expansion: Optional[Union[float, Fraction]] = field(
         default=None,
         metadata={
             "aliases": [
@@ -659,7 +663,7 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
         metadata={"aliases": ["tx_fee_fixed", "txFeeFixed"]},
     )
     tx_fee_per_byte: Optional[int] = field(default=None, metadata={"aliases": ["tx_fee_per_byte", "txFeePerByte"]})
-    decentralization_param: Optional[float] = field(
+    decentralization_param: Optional[Union[float, Fraction]] = field(
         default=None,
         metadata={
             "aliases": [
@@ -671,11 +675,11 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
         },
     )
     extra_entropy: Optional[str] = field(default=None, metadata={"aliases": ["extra_entropy", "extraPraosEntropy"]})
-    price_mem: Optional[float] = field(
+    price_mem: Optional[Union[float, Fraction]] = field(
         default=None,
         metadata={"aliases": ["price_mem", "executionUnitPricesPriceMemory"]},
     )
-    price_step: Optional[float] = field(
+    price_step: Optional[Union[float, Fraction]] = field(
         default=None,
         metadata={"aliases": ["price_step", "executionUnitPricesPriceSteps"]},
     )
@@ -745,7 +749,11 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
             object.__setattr__(
                 self,
                 "coins_per_utxo_byte",
-                (self.utxo_cost_per_byte or self.coins_per_utxo_word / 8),
+                # CIP-55: a byte costs an eighth of a word, rounded down.
+                (
+                    self.utxo_cost_per_byte
+                    or (self.coins_per_utxo_word // 8 if self.coins_per_utxo_word is not None else None)
+                ),
             )
 
         if self.min_fee_coefficient is None:
@@ -1034,7 +1042,9 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
         elif min_fee_reference_scripts is not None:
             maximum_reference_scripts_size = {"bytes": max_size or MAX_REF_SCRIPTS_BYTES}
 
-        return PyCardanoProtocolParameters(
+        # pycardano declares every field required, but a backend that does not report a
+        # parameter leaves it None; pycardano accepts that, so pass the values through as they are.
+        fields: Dict[str, Any] = dict(
             min_fee_constant=self.min_fee_constant,
             min_fee_coefficient=self.min_fee_coefficient,
             max_block_size=self.max_block_size,
@@ -1066,3 +1076,4 @@ class ProtocolParameters(BaseModel, PyCardanoProtocolParameters):
             maximum_reference_scripts_size=maximum_reference_scripts_size,
             min_fee_reference_scripts=min_fee_reference_scripts,
         )
+        return PyCardanoProtocolParameters(**fields)

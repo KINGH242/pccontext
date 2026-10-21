@@ -388,3 +388,25 @@ def test_a_null_alias_does_not_erase_the_value_of_another():
         {"cost_models": {"PlutusV2": {"a-op": 1}}, "cost_models_raw": {"PlutusV2": [9]}}
     ).to_pycardano()
     assert list(both.cost_models["PlutusV2"].values()) == [9]
+
+
+def test_coins_per_utxo_byte_from_the_word_price_rounds_down():
+    """CIP-55: a byte costs an eighth of a word, rounded down (34482 / 8 = 4310.25 -> 4310)."""
+    params = ProtocolParameters(coins_per_utxo_word=34482, coins_per_utxo_byte=None)
+    assert params.coins_per_utxo_byte == 4310
+
+
+def test_coins_per_utxo_byte_without_any_price_stays_unset():
+    # This used to raise TypeError (None / 8).
+    params = ProtocolParameters(coins_per_utxo_word=None, coins_per_utxo_byte=None)
+    assert params.coins_per_utxo_byte is None
+
+
+def test_exact_ratios_are_kept_and_ratio_strings_are_parsed():
+    params = ProtocolParameters(pool_influence=Fraction(3, 10), price_mem=Fraction(577, 10000))
+    assert params.to_pycardano().pool_influence == Fraction(3, 10)
+    assert params.to_pycardano().price_mem == Fraction(577, 10000)
+
+    parsed = ProtocolParameters.from_dict({"pool_influence": "3/10", "price_mem": "0.0577"})
+    assert parsed.pool_influence == 0.3
+    assert parsed.price_mem == 0.0577

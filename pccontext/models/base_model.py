@@ -69,11 +69,13 @@ class BaseModel:
                     field_type = cls.__dataclass_fields__[field_name].type
                     if field_type == "Optional[Dict[str, Any]]":
                         v = json.loads(v)
-                    elif field_type == "Optional[float]":
+                    elif field_type in ("Optional[float]", "Optional[Union[float, Fraction]]"):
                         # check if the value is a fraction
                         v = float(v) if "/" not in v else float(Fraction(v))
                     elif field_type == "Optional[int]":
                         v = int(v)
+                    elif field_type == "Optional[Union[int, float]]":
+                        v = float(v) if "." in v else int(v)
                     elif field_type == "Optional[Era]":
                         v = Era(v.lower())
                     elif field_type == "Optional[Network]":

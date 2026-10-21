@@ -130,13 +130,7 @@ include = ["pccontext"]
 
 [tool.ty.rules]
 # Overrides here widen inherited attributes and methods to Optional on purpose (the backends
-# fill models from partial API responses); the rest are existing findings kept visible as
-# warnings until each is fixed.
+# fill models from partial API responses).
 invalid-attribute-override = "ignore"
 invalid-method-override = "ignore"
 invalid-property-type-override = "ignore"
-invalid-argument-type = "warn"
-invalid-return-type = "warn"
-unresolved-attribute = "warn"
-unsupported-operator = "warn"
-call-non-callable = "warn"
